@@ -1,0 +1,28 @@
+# Environment for the Bayes'd Misfits — MindRL Challenge 2026 project.
+#
+# Mirrors the Carney ARIA Workshop 2026 HSSM stack so the data-loading
+# notebook (and later modeling notebooks) can run against the same
+# HSSM / ssms.rl release.
+#
+[project]
+name = "bayesd-misfits"
+version = "0.0.0"
+description = "MindRL Challenge 2026 — cognitive modeling with HSSM"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "hssm @ git+https://github.com/lnccbrown/HSSM.git@main",
+    "zeus-mcmc>=2.5",
+    "jupyterlab>=4.2",
+    "ipykernel>=6.29",
+    "matplotlib>=3.8",
+    "arviz>=0.18",
+    "pyarrow>=17",
+    "nbconvert>=7.16",
+    "ipywidgets>=8.1",
+]
+
+[tool.uv]
+package = true
+
+[tool.setuptools]
+packages = ["bayesd_misfits"]

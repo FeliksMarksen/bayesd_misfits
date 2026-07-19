@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Data (downloaded separately via hf CLI)
+hf_cache/
+*.parquet
+*.jsonl
+*.png
+
+# Jupyter
+.ipynb_checkpoints/
+
+# uv
+# (uv.lock is committed — it pins the full dependency tree)
+
+# Build artifacts
+*.egg-info/
+build/
+dist/
