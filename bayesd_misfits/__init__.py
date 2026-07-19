@@ -10,7 +10,7 @@ from bayesd_misfits.data import (
     summarize_data,
     validate_for_hssm,
 )
-from bayesd_misfits.model import NArmRescorlaWagner
+from bayesd_misfits.model import NArmRescorlaWagner, NArmRWDriftLearner
 
 __all__ = [
     "ensure_data_downloaded",
@@ -22,4 +22,5 @@ __all__ = [
     "summarize_data",
     "validate_for_hssm",
     "NArmRescorlaWagner",
+    "NArmRWDriftLearner",
 ]
