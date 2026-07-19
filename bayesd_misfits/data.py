@@ -37,6 +37,82 @@ import pandas as pd
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _DEFAULT_DATA_DIR = _REPO_ROOT / "hf_cache" / "public"
 
+_DATASET_REPO = "mindrl-hub/mindrl-challenge-public"
+_DATASET_FILES = [
+    "public_train.jsonl",
+    "public_train_reward_schedules.jsonl",
+    "schema.json",
+    "task_description.md",
+]
+
+
+# ---------------------------------------------------------------------------
+# Data download
+# ---------------------------------------------------------------------------
+
+
+def ensure_data_downloaded(
+    data_dir: str | Path = _DEFAULT_DATA_DIR,
+    *,
+    files: list[str] | None = None,
+) -> Path:
+    """Download the MindRL Challenge dataset from HuggingFace if not present.
+
+    This is a no-op if the files already exist.  Uses the ``huggingface_hub``
+    library (installed as an HSSM dependency), so no separate CLI is needed.
+
+    Parameters
+    ----------
+    data_dir : str | Path
+        Target directory for the downloaded files.
+    files : list[str] | None
+        Specific filenames to download.  Defaults to all four dataset files.
+
+    Returns
+    -------
+    Path
+        The data directory (for chaining).
+    """
+    data_dir = Path(data_dir)
+    files = files or _DATASET_FILES
+
+    # Check if all files are already present
+    existing = [f for f in files if (data_dir / f).exists()]
+    if len(existing) == len(files):
+        print(f"Dataset already present at {data_dir} ✓")
+        return data_dir
+
+    missing = [f for f in files if not (data_dir / f).exists()]
+    print(f"Downloading {len(missing)} missing file(s) from HuggingFace...")
+
+    try:
+        from huggingface_hub import hf_hub_download
+    except ImportError:
+        raise ImportError(
+            "huggingface_hub is required to download the dataset. "
+            "Run 'uv sync' to install dependencies."
+        )
+
+    for filename in missing:
+        print(f"  ↓ {filename}")
+        downloaded = hf_hub_download(
+            repo_id=_DATASET_REPO,
+            filename=filename,
+            repo_type="dataset",
+            local_dir=str(data_dir),
+        )
+        # hf_hub_download may place files in a nested cache structure;
+        # ensure they end up directly in data_dir
+        downloaded = Path(downloaded)
+        target = data_dir / filename
+        if downloaded != target and downloaded.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            downloaded.rename(target)
+
+    print(f"Downloaded to {data_dir} ✓")
+    return data_dir
+
+
 # ---------------------------------------------------------------------------
 # Low-level JSONL readers
 # ---------------------------------------------------------------------------

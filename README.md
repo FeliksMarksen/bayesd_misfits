@@ -13,10 +13,7 @@ cd bayesd_misfits
 # 2. Create environment (Python 3.12 + HSSM stack)
 uv sync
 
-# 3. Download the dataset (~40 MB, from HuggingFace)
-./scripts/download_data.sh
-
-# 4. Run the notebook
+# 3. Run the notebook
 jupyter lab notebooks/01_data_loading.ipynb
 ```
 
@@ -46,16 +43,12 @@ bayesd_misfits/
 
 ## Data
 
-The dataset is **not committed** — it's downloaded via `./scripts/download_data.sh`
-to `hf_cache/public/` (gitignored). The download uses the `hf` CLI that comes
-with `uv sync`, so no manual HuggingFace authentication is needed (the dataset is
-public).
+The dataset is **not committed** — the notebook downloads it automatically on
+first run via `ensure_data_downloaded()` (using `huggingface_hub`, which comes
+with `uv sync`). Data lands in `hf_cache/public/` (gitignored).
 
-To download to a custom location:
+To download from the command line instead:
 
 ```bash
-./scripts/download_data.sh /path/to/custom/dir
+./scripts/download_data.sh
 ```
-
-The data module automatically resolves the path relative to the repo root, so
-notebooks and scripts work regardless of your working directory.
