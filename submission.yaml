@@ -1,10 +1,4 @@
 # MindRL Challenge — Bayes'd Misfits submission metadata.
-#
-# Fill in the TODO fields (commit_hash, member details) before a real
-# submission. The ``runtime_profile`` block is mandatory and tells organizers
-# how to route evaluation before cloning the repo. Even GPU/API/LLM submissions
-# must still expose a callable ``Agent`` class — this block only declares
-# routing, it does not change the API. Never commit secrets; list names only.
 
 team:
   team_id: bayesd_misfits
@@ -17,31 +11,31 @@ team:
 submission:
   visibility: internal
   method_family: bayesian_cognitive_model
-  short_description: "Cognitive modeling for the MindRL 4-arm restless bandit using HGF / HSSM-fitted RL agents."
+  short_description: "Dual-Alpha Rescorla-Wagner with choice stickiness, fitted via hierarchical MCMC."
   repo_url: https://github.com/FeliksMarksen/bayesd_misfits.git
-  commit_hash: 21870cc3095b9d0922a118b5ea41a1c569273850
+  commit_hash: TODO
   agent_path: agent.py
   config_path: config.yaml
   requirements_path: requirements.txt
   interpretation_card_path: interpretation_card.md
 
-optional_targets: []            # add ["response_time"] to opt into the RT auxiliary leaderboard
+optional_targets: []
+
 
 runtime_profile:
-  execution_type: local_python        # local_python | gpu_model | external_api | hybrid
-  model_family: symbolic_cognitive     # symbolic_cognitive | neural | llm_agent | auditing | hybrid | other
+  execution_type: local_python
+  model_family: symbolic_cognitive
   requires_gpu: false
   gpu_type: null
   requires_external_api: false
-  required_secrets: []                 # e.g. ["OPENAI_API_KEY"]; leave empty when none
-  estimated_eval_cost: none            # none | low | medium | high
+  required_secrets: []
+  estimated_eval_cost: none
   expected_runtime_minutes: null
-  notes: "Fitted Dual-Alpha + Sticky RL agent runs fully in-process on CPU with minimal resource usage."
-
+  notes: "Fitted RL agent runs fully inside the evaluator process on CPU."
 artifacts:
-  hf_checkpoint: null                  # Hugging Face URI for large fitted checkpoints, if any
+  hf_checkpoint: null
   external_weights: null
-  notes: "Fitted hyperparameters are shipped directly in config.yaml."
+  notes: "Fitted hyperparameters are shipped in config.yaml."
 
 policy:
   ip_owner: submitting_team

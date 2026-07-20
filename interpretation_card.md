@@ -1,52 +1,53 @@
 # Interpretation Card — Bayes'd Misfits
 
-> **Status:** Fully updated for the winning **Dual-Alpha + Sticky RL** submission.
-
 ## 1. Core Claim
 
-Our submission agent implements a **Dual-Alpha Rescorla-Wagner reinforcement learning model with choice stickiness (perseveration)**. It asserts that human choice patterns in this multi-arm restless bandit task are dominated by two main cognitive processes:
-1. **Asymmetric Learning rates:** Separate updating speeds for positive and negative prediction errors (PE), reflecting differing updates from rewards vs. omissions.
-2. **Choice Perseveration (Stickiness):** A significant, value-independent bias to repeat the previous choice, which prevents choice noise ($\beta$) from being overestimated.
+The agent implements a **Dual-Alpha Rescorla-Wagner model with choice stickiness**. It maintains a value estimate $Q_a$ per arm, updated with asymmetric learning rates for positive vs. negative prediction errors, and selects actions via softmax with a perseveration bonus on the last-chosen arm.
+
+**Update rule** (`update()`): $\delta = r - Q_a$, then $Q_a \leftarrow Q_a + \alpha\,\delta$ where $\alpha = \alpha_{+}$ if $\delta \geq 0$, else $\alpha_{-}$.
+
+**Choice rule** (`predict()`): $P(a) \propto \exp\!\bigl(\beta \cdot [Q_a + \mathbb{1}(a = a_{\text{prev}}) \cdot s]\bigr)$
 
 ## 2. Mechanism Mapping
 
-| Concept | Where it lives |
-|--------|----------------|
-| Pos/Neg Learning Rates | `rl_alpha_pos` (0.380) / `rl_alpha_neg` (0.763) in `config.yaml` — positive errors update moderately, while negative errors update aggressively to prune bad options. |
-| Choice Stickiness | `sticky` (0.126) — a value bonus added to the last-chosen arm's logit before softmax. |
-| Choice Consistency / Noise | `beta` (8.331) — inverse-temperature mapping value difference to choice probability. |
-| Initial Beliefs | `initial_q` (0.5) — prior expected value for all arms, corresponding to the normalized [0, 1] reward scale. |
+| Parameter | Value | Role in `agent.py` |
+|-----------|-------|---------------------|
+| `rl_alpha_pos` | 0.380 | Learning rate for positive prediction errors (reward ≥ expectation) |
+| `rl_alpha_neg` | 0.763 | Learning rate for negative prediction errors (disappointment) |
+| `sticky` | 0.126 | Value-independent bonus added to the last-chosen arm's logit |
+| `beta` | 8.331 | Softmax inverse temperature |
+| `initial_q` | 0.5 | Starting Q-value for all arms (neutral on [0, 1] scale) |
 
 ## 3. Alternative Explanations
 
-- **Hierarchical Gaussian Filter (HGF):** Posits that agents track environment volatility dynamically. MCMC comparisons showed HGF performed significantly worse (NLL 0.74 vs 0.61) under a softmax choice rule because the uncertainty of neglected arms grows, causing overcorrection when they are eventually sampled.
-- **Symmetric RW + Decay:** Posits a single learning rate and forgetting. This fits worse because humans learn asymmetric lessons from success vs. failure, and decay-based memory is too short-sighted.
+- **HGF:** Tracks environment volatility dynamically but underperforms under softmax because uncertainty of neglected arms grows, causing overcorrection on re-sampling.
+- **Symmetric RW + Decay:** A single learning rate with forgetting fits worse because humans update asymmetrically from wins vs. losses.
 
 ## 4. Discriminative Test
 
-- **Ablation of Stickiness:** Removing the `sticky` parameter causes the inverse-temperature $\beta$ estimate to saturate at the boundary ($\approx 9.9$), showing it is forced to capture perseveration as decision certainty.
-- **Asymmetry Test:** Forcing `rl_alpha_pos` = `rl_alpha_neg` degrades fit, showing participants update their beliefs faster when disappointed by a loss (alpha neg = 0.76) than when confirmed by a win (alpha pos = 0.38).
+- Removing `sticky` causes $\beta$ to saturate at the prior boundary (~9.9), showing it is forced to absorb perseveration as choice certainty.
+- Forcing $\alpha_{+} = \alpha_{-}$ degrades fit, confirming asymmetric updating.
 
 ## 5. Predictive Role
 
-Including both learning rate asymmetry and choice stickiness drops the one-step-ahead choice prediction NLL from **0.708 (standard RW)** to **0.609 (Sticky)**, making it our primary model for the MindRL Challenge.
+Q-values are updated online via `update()` after every trial, so the agent learns from each reward. $\alpha_{-} > \alpha_{+}$ means bad options are pruned quickly while good options are reinforced gradually. The stickiness term captures choice inertia independently of value, preventing $\beta$ from being overestimated.
 
 ## 6. Failure Conditions
 
-- **Sudden Volatility Shifts:** Since the learning rates and stickiness parameters are fixed, the model cannot dynamically speed up learning if the environment's drift rate changes dramatically.
-- **Uncertainty-guided exploration:** The softmax decision rule does not actively choose options because they are uncertain (no exploration bonus like UCB/Thompson sampling).
+- Hyperparameters ($\alpha_{+}$, $\alpha_{-}$, sticky, $\beta$) are fixed from config; the model cannot adapt its learning speed to sudden volatility shifts. (Q-values do update online each trial.)
+- No exploration bonus for uncertain arms (pure softmax).
+- Assumes rewards on a [0, 1] scale (divides by 100 if raw rewards > 1.0).
 
 ## 7. Evidence Summary
 
-Formal hierarchical MCMC comparisons (N=30 participants, 120 trials each, 1000 draws) ranked the models as follows:
-1. **Dual-Alpha + Sticky RL**: NLL = **0.6097** 🥇
-2. **Dual-Alpha**: NLL = 0.6999
-3. **RW + Decay**: NLL = 0.7043
-4. **Standard RW**: NLL = 0.7081
-5. **HGF**: NLL = 0.7382
+Hierarchical MCMC fitting on training data. Parameters in `config.yaml` are the group-level posterior means.
 
 ## 8. Reproducibility Notes
 
-- Agent entrypoint: `agent.py` (`Agent` class).
-- Hyperparameters: `config.yaml` under `model.*`.
-- Model comparisons: `scripts/run_comparison.py`.
+- Agent: `agent.py` (`Agent` class).
+- Parameters: `config.yaml` under `model.*`.
+- Fitting: `scripts/run_comparison.py`.
+
+## 9. Confidentiality Note
+
+No secrets, private URLs, or identifiable participant data in this repository.
