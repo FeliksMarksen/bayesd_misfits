@@ -14,11 +14,13 @@ runtime:
   requires_external_api: false
 
 model:
-  name: wsls_baseline          # TODO: rename to your model (e.g. hgf, rl_softmax)
-  type: cognitive_baseline      # TODO: e.g. bayesian_cognitive_model
-  win_threshold: 0.5            # WSLS placeholder — replace with your params
-  stay_probability: 0.85
-  epsilon: 0.05
+  name: dual_alpha_sticky_rl
+  type: cognitive_rl_model
+  rl_alpha_pos: 0.380
+  rl_alpha_neg: 0.763
+  sticky: 0.126
+  beta: 8.331
+  initial_q: 0.5
 
 evaluation:
   allow_online_state_updates: true

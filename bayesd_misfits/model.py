@@ -1,26 +1,8 @@
-"""Custom N-arm Rescorla-Wagner learner for HSSM RLSSM.
+"""N-arm Rescorla-Wagner learners for HSSM RLSSM.
 
-Implements the ``LearningProcess`` protocol from ``ssms.rl`` for an arbitrary
-number of arms.  Designed for the MindRL Challenge 4-arm drifting bandit but
-generalises to any N-arm bandit by changing ``n_actions``.
-
-The learner maintains N Q-values and exposes them as computed parameters
-(``q0, q1, ..., qN-1``) that feed into the ``inv_temp_softmax_N`` decision
-process registered in HSSM.  The only free parameters are:
-
-- ``rl_alpha`` — Rescorla-Wagner learning rate.
-- ``beta``     — inverse temperature (owned by the decision process, not the
-                 learner, but listed in the model's free params).
-
-For a *restless* (drifting) bandit we also support an optional forgetting
-rate ``rl_decay`` that pulls Q-values toward ``initial_q`` each trial:
-
-    Q[a] ← (1 - decay) * Q[a] + decay * initial_q      (all arms, every trial)
-    Q[c] ← Q[c] + alpha * (feedback - Q[c])             (chosen arm only)
-
-Setting ``rl_decay = 0`` recovers the standard RW rule.  When the model uses
-``decay``, declare ``rl_decay`` in ``free_params`` and add it to the HSSM
-``include`` list.
+Implements the ``LearningProcess`` protocol from ``ssms.rl``.
+Variants: single-alpha, dual-alpha (pos/neg PE), optional decay, stickiness.
+Drift-rate variant outputs v = scaler * Q for race models.
 """
 
 from __future__ import annotations
@@ -29,7 +11,6 @@ from typing import Any
 
 import numpy as np
 
-# JAX is imported lazily so the module can be inspected without a JAX install.
 try:
     import jax.numpy as jnp
 except ImportError:  # pragma: no cover
@@ -37,22 +18,7 @@ except ImportError:  # pragma: no cover
 
 
 class NArmRescorlaWagner:
-    """N-arm Rescorla-Wagner learner with optional forgetting.
-
-    Parameters
-    ----------
-    n_actions : int
-        Number of choice alternatives (e.g. 4 for the MindRL Challenge).
-    initial_q : float
-        Initial Q-value for all arms (default 0.5).
-    feedback_field : str
-        Column name in the trial context that carries the reward (default
-        ``"feedback"``).
-    use_decay : bool
-        If ``True``, add ``rl_decay`` to ``free_params`` and apply exponential
-        forgetting toward ``initial_q`` each trial.  Recommended for restless
-        (drifting) bandits.
-    """
+    """N-arm RW learner with optional forgetting (decay toward initial_q)."""
 
     def __init__(
         self,
@@ -67,17 +33,12 @@ class NArmRescorlaWagner:
         self._use_decay = use_decay
         self._state: dict[str, Any] | None = None
 
-    # ------------------------------------------------------------------
-    # Protocol properties
-    # ------------------------------------------------------------------
-
     @property
     def n_actions(self) -> int:
         return self._n_actions
 
     @property
     def computed_params(self) -> list[str]:
-        """Q-values exposed to the decision process (e.g. ['q0','q1','q2','q3'])."""
         return [f"q{i}" for i in range(self._n_actions)]
 
     @property
@@ -113,10 +74,6 @@ class NArmRescorlaWagner:
     def required_context_fields(self) -> list[str]:
         return ["choice", self._feedback_field]
 
-    # ------------------------------------------------------------------
-    # State management
-    # ------------------------------------------------------------------
-
     def init_state(self) -> dict[str, np.ndarray]:
         return {
             "q_values": np.full(self._n_actions, self._initial_q, dtype=np.float64)
@@ -130,58 +87,28 @@ class NArmRescorlaWagner:
     def reset(self, **kwargs) -> None:
         self._state = self.init_state()
 
-    # ------------------------------------------------------------------
-    # Python / NumPy backend
-    # ------------------------------------------------------------------
-
-    def compute_python(
-        self,
-        state: dict[str, Any],
-        params: dict[str, float],
-        context: dict[str, Any],
-    ) -> dict[str, float]:
+    def compute_python(self, state, params, context):
         q = state["q_values"]
         return {f"q{i}": float(q[i]) for i in range(self._n_actions)}
 
-    def update_python(
-        self,
-        state: dict[str, Any],
-        params: dict[str, float],
-        context: dict[str, Any],
-    ) -> dict[str, Any]:
+    def update_python(self, state, params, context):
         choice = int(context["choice"])
         feedback = float(context[self._feedback_field])
         alpha = params["rl_alpha"]
         q = np.asarray(state["q_values"], dtype=np.float64).copy()
 
-        # Optional forgetting toward initial_q
         if self._use_decay:
             decay = params.get("rl_decay", 0.0)
             q = (1.0 - decay) * q + decay * self._initial_q
 
-        # RW update on chosen arm only
         q[choice] += alpha * (feedback - q[choice])
         return {"q_values": q}
 
-    # ------------------------------------------------------------------
-    # JAX backend (differentiable — used by HSSM NUTS)
-    # ------------------------------------------------------------------
-
-    def compute_jax(
-        self,
-        state: dict[str, Any],
-        params: dict[str, float],
-        context: dict[str, Any],
-    ) -> dict[str, Any]:
+    def compute_jax(self, state, params, context):
         q = state["q_values"]
         return {f"q{i}": q[i] for i in range(self._n_actions)}
 
-    def update_jax(
-        self,
-        state: dict[str, Any],
-        params: dict[str, float],
-        context: dict[str, Any],
-    ) -> dict[str, Any]:
+    def update_jax(self, state, params, context):
         choice = context["choice"]
         feedback = context[self._feedback_field]
         alpha = params["rl_alpha"]
@@ -193,10 +120,6 @@ class NArmRescorlaWagner:
 
         delta = feedback - q[choice]
         return {"q_values": q.at[choice].add(alpha * delta)}
-
-    # ------------------------------------------------------------------
-    # Convenience wrappers (used by the ssms.rl.Simulator)
-    # ------------------------------------------------------------------
 
     def compute_ssm_params(self, trial_params: dict[str, float]) -> dict[str, float]:
         if self._state is None:
@@ -214,25 +137,9 @@ class NArmRescorlaWagner:
             context={"choice": action, self._feedback_field: reward},
         )
 
-# ---------------------------------------------------------------------------
-# RT-based variant: outputs scaled drift rates for race models
-# ---------------------------------------------------------------------------
-
 
 class NArmRWDriftLearner:
-    """N-arm RW learner that outputs scaled drift rates for RT-based race models.
-
-    Unlike ``NArmRescorlaWagner`` (which outputs raw Q-values ``q0..qN-1`` for
-    softmax decision processes), this learner outputs **drift rates**
-    ``v0..vN-1 = scaler * Q[k]`` for race models such as ``race_no_bias_angle_4``.
-
-    Free parameters:
-    - ``rl_alpha`` — Rescorla-Wagner learning rate.
-    - ``scaler``   — gain factor converting Q-values to drift-rate units.
-
-    Optional ``use_decay`` adds a forgetting rate ``rl_decay`` (same as
-    ``NArmRescorlaWagner``).
-    """
+    """N-arm RW outputting scaled drift rates (v = scaler * Q) for race models."""
 
     def __init__(
         self,
@@ -339,32 +246,8 @@ class NArmRWDriftLearner:
         )
 
 
-# ---------------------------------------------------------------------------
-# Dual-alpha RW: separate learning rates for positive/negative PEs
-# ---------------------------------------------------------------------------
-
-
 class NArmDualAlphaRW:
-    """N-arm Rescorla-Wagner with separate learning rates for positive and
-    negative prediction errors.
-
-    A well-known improvement over standard RW (Cazé & van der Meer, 2016;
-    Lefebvre et al., 2017): participants may learn differently from positive
-    surprises (reward > expectation) vs. negative surprises (reward < expectation).
-
-    Update rule:
-        PE = reward - Q[chosen]
-        if PE > 0:  Q[chosen] += alpha_pos * PE
-        else:       Q[chosen] += alpha_neg * PE
-
-    Free parameters:
-    - ``rl_alpha_pos`` — learning rate for positive prediction errors.
-    - ``rl_alpha_neg`` — learning rate for negative prediction errors.
-    - ``beta``         — inverse temperature (owned by the softmax decision process).
-
-    Optional ``use_decay`` adds a forgetting rate ``rl_decay`` like
-    ``NArmRescorlaWagner``.
-    """
+    """N-arm RW with separate learning rates for positive/negative PEs."""
 
     def __init__(
         self,
@@ -463,6 +346,127 @@ class NArmDualAlphaRW:
         pe = feedback - q[choice]
         alpha = jnp.where(pe >= 0, a_pos, a_neg)
         return {"q_values": q.at[choice].add(alpha * pe)}
+
+    def compute_ssm_params(self, trial_params):
+        if self._state is None:
+            raise RuntimeError("Call reset() before compute_ssm_params()")
+        return self.compute_python(self._state, trial_params, context={})
+
+    def update(self, action, reward, trial_params):
+        if self._state is None:
+            raise RuntimeError("Call reset() before update()")
+        self._state = self.update_python(
+            self._state, trial_params,
+            context={"choice": action, self._feedback_field: reward},
+        )
+
+
+class NArmRWDualAlphaSticky:
+    """N-arm dual-alpha RW with choice stickiness (perseveration).
+
+    Adds a ``sticky`` bonus to the last-chosen arm's Q-value before softmax.
+    The sticky parameter is applied inside the learner so the decision
+    process sees biased Q-values directly.
+    """
+
+    def __init__(
+        self,
+        n_actions: int = 4,
+        initial_q: float = 0.5,
+        feedback_field: str = "feedback",
+    ):
+        self._n_actions = n_actions
+        self._initial_q = initial_q
+        self._feedback_field = feedback_field
+        self._state: dict[str, Any] | None = None
+
+    @property
+    def computed_params(self) -> list[str]:
+        return [f"q{i}" for i in range(self._n_actions)]
+
+    @property
+    def free_params(self) -> list[str]:
+        return ["rl_alpha_pos", "rl_alpha_neg", "sticky"]
+
+    @property
+    def param_bounds(self) -> dict[str, tuple[float, float]]:
+        return {
+            "rl_alpha_pos": (0.0, 1.0),
+            "rl_alpha_neg": (0.0, 1.0),
+            "sticky": (-5.0, 5.0),
+        }
+
+    @property
+    def default_params(self) -> dict[str, float]:
+        return {"rl_alpha_pos": 0.3, "rl_alpha_neg": 0.1, "sticky": 0.0}
+
+    @property
+    def available_backends(self) -> tuple[str, ...]:
+        return ("python", "jax")
+
+    @property
+    def supports_gradient(self) -> bool:
+        return True
+
+    @property
+    def required_context_fields(self) -> list[str]:
+        return ["choice", self._feedback_field]
+
+    def init_state(self) -> dict[str, Any]:
+        return {
+            "q_values": np.full(self._n_actions, self._initial_q, dtype=np.float64),
+            "last_choice": -1,
+        }
+
+    def init_jax_state(self) -> dict[str, Any]:
+        return {
+            "q_values": jnp.full((self._n_actions,), self._initial_q),
+            "last_choice": -1,
+        }
+
+    def reset(self, **kwargs) -> None:
+        self._state = self.init_state()
+
+    def compute_python(self, state, params, context):
+        q = state["q_values"].copy()
+        sticky = params["sticky"]
+        last = state["last_choice"]
+        if last >= 0:
+            q[last] += sticky
+        return {f"q{i}": float(q[i]) for i in range(self._n_actions)}
+
+    def compute_jax(self, state, params, context):
+        q = state["q_values"]
+        sticky = params["sticky"]
+        last = state["last_choice"]
+        q_biased = jnp.where(
+            jnp.arange(self._n_actions) == last, q + sticky, q,
+        )
+        return {f"q{i}": q_biased[i] for i in range(self._n_actions)}
+
+    def update_python(self, state, params, context):
+        choice = int(context["choice"])
+        feedback = float(context[self._feedback_field])
+        a_pos = params["rl_alpha_pos"]
+        a_neg = params["rl_alpha_neg"]
+        q = np.asarray(state["q_values"], dtype=np.float64).copy()
+
+        pe = feedback - q[choice]
+        alpha = a_pos if pe >= 0 else a_neg
+        q[choice] += alpha * pe
+        return {"q_values": q, "last_choice": choice}
+
+    def update_jax(self, state, params, context):
+        choice = context["choice"]
+        feedback = context[self._feedback_field]
+        a_pos = params["rl_alpha_pos"]
+        a_neg = params["rl_alpha_neg"]
+        q = state["q_values"]
+
+        pe = feedback - q[choice]
+        alpha = jnp.where(pe >= 0, a_pos, a_neg)
+        new_q = q.at[choice].add(alpha * pe)
+        return {"q_values": new_q, "last_choice": choice}
 
     def compute_ssm_params(self, trial_params):
         if self._state is None:

@@ -10,8 +10,8 @@ team:
   team_id: bayesd_misfits
   display_name: Bayes'd Misfits
   members:
-    - name: TODO
-      email: TODO
+    - name: FeliksMarksen
+      email: feliks@marksen.de
       role: modeler
 
 submission:
@@ -19,7 +19,7 @@ submission:
   method_family: bayesian_cognitive_model
   short_description: "Cognitive modeling for the MindRL 4-arm restless bandit using HGF / HSSM-fitted RL agents."
   repo_url: https://github.com/FeliksMarksen/bayesd_misfits.git
-  commit_hash: TODO
+  commit_hash: 21870cc3095b9d0922a118b5ea41a1c569273850
   agent_path: agent.py
   config_path: config.yaml
   requirements_path: requirements.txt
@@ -36,12 +36,12 @@ runtime_profile:
   required_secrets: []                 # e.g. ["OPENAI_API_KEY"]; leave empty when none
   estimated_eval_cost: none            # none | low | medium | high
   expected_runtime_minutes: null
-  notes: "Placeholder WSLS baseline runs fully in-process on CPU. Update this block once the real model is wired in (e.g. if HGF inference needs a GPU)."
+  notes: "Fitted Dual-Alpha + Sticky RL agent runs fully in-process on CPU with minimal resource usage."
 
 artifacts:
   hf_checkpoint: null                  # Hugging Face URI for large fitted checkpoints, if any
   external_weights: null
-  notes: "No external artifacts required for the placeholder baseline."
+  notes: "Fitted hyperparameters are shipped directly in config.yaml."
 
 policy:
   ip_owner: submitting_team

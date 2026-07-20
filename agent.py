@@ -25,6 +25,7 @@ Hard invariants the evaluator enforces:
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import math
 from typing import Any
 
 
@@ -69,23 +70,28 @@ def _default_actions() -> list[Any]:
 
 class Agent:
     """
-    Win-Stay-Lose-Shift placeholder baseline.
+    Dual-Alpha + Sticky RL submission agent.
 
-    Favor repeating the last action after a sufficiently good reward; after a
-    poor reward, favor switching away. Replace this with the Bayes'd Misfits
-    model (HGF / HSSM-fitted RL / etc.) while keeping the four-method API.
+    Maintains action values updated via positive/negative learning rates,
+    applies a choice-stickiness perseveration bonus, and selects options
+    via a softmax choice rule.
     """
 
     def __init__(self, config: Mapping[str, Any] | Any | None = None) -> None:
         self._config = config or {}
         model = get_field(self._config, "model", default={}) or {}
-        self._win_threshold = float(get_field(model, "win_threshold", 0.5))
-        self._stay_probability = float(get_field(model, "stay_probability", 0.85))
-        self._epsilon = float(get_field(model, "epsilon", 0.05))
+        
+        # Load hyperparameters from config (defaulting to converged fit)
+        self._rl_alpha_pos = float(get_field(model, "rl_alpha_pos", 0.380))
+        self._rl_alpha_neg = float(get_field(model, "rl_alpha_neg", 0.763))
+        self._sticky = float(get_field(model, "sticky", 0.126))
+        self._beta = float(get_field(model, "beta", 8.331))
+        self._initial_q = float(get_field(model, "initial_q", 0.5))
+
         self._available_actions: list[Any] = []
-        # Optional online cache; predict() uses history when present.
-        self._last_action: Any = None
-        self._last_reward: Any = None
+        self._q: dict[Any, float] = {}
+        self._last_choice: Any = None
+        self._history_len = 0
 
     def reset(self, context: Mapping[str, Any] | Any) -> None:
         actions = get_field(context, "available_actions", default=None)
@@ -97,8 +103,11 @@ class Agent:
             self._available_actions = []
         if not self._available_actions:
             self._available_actions = list(_default_actions())
-        self._last_action = None
-        self._last_reward = None
+            
+        # Re-initialize action values and choice history
+        self._q = {a: self._initial_q for a in self._available_actions}
+        self._last_choice = None
+        self._history_len = 0
 
     def predict(self, history: Any) -> dict[str, dict[Any, float]]:
         actions = list(self._available_actions)
@@ -106,42 +115,54 @@ class Agent:
             return {"action_probs": {}}
 
         hist = _as_history_list(history)
-        if not hist:
-            return {"action_probs": self._uniform_distribution(actions)}
 
-        last = hist[-1]
-        prev_action = get_field(last, "action", default=None)
-        prev_reward = get_field(last, "reward", default=None)
+        if len(hist) != self._history_len:
+            # Reconstruct state from history
+            q = {a: self._initial_q for a in actions}
+            last_choice = None
+            
+            # Detect reward scale dynamically from history
+            max_rew = 0.0
+            for trial in hist:
+                rew = get_field(trial, "reward", default=None)
+                if rew is not None:
+                    try:
+                        max_rew = max(max_rew, abs(float(rew)))
+                    except (TypeError, ValueError):
+                        pass
+            scale = 100.0 if max_rew > 1.0 else 1.0
+            
+            for trial in hist:
+                act = get_field(trial, "action", default=None)
+                rew = get_field(trial, "reward", default=None)
+                if act is not None and act in q and rew is not None:
+                    try:
+                        r = float(rew) / scale
+                        pe = r - q[act]
+                        alpha = self._rl_alpha_pos if pe >= 0.0 else self._rl_alpha_neg
+                        q[act] += alpha * pe
+                        last_choice = act
+                    except (TypeError, ValueError):
+                        pass
+            self._q = q
+            self._last_choice = last_choice
+            self._history_len = len(hist)
 
-        try:
-            won = prev_reward is not None and float(prev_reward) >= self._win_threshold
-        except (TypeError, ValueError):
-            won = False
+        values = {}
+        for a in actions:
+            val = self._q[a]
+            if self._last_choice is not None and a == self._last_choice:
+                val += self._sticky      # perseveration bonus on the last-chosen arm
+            values[a] = val
 
-        if prev_action is None or prev_action not in actions:
-            return {"action_probs": self._uniform_distribution(actions)}
+        # Numerically stable softmax (shift by max so exp never overflows)
+        max_val = max(values.values())
+        exp_vals = {}
+        for a in actions:
+            exp_vals[a] = math.exp(self._beta * (values[a] - max_val))
 
-        n = len(actions)
-        if n == 1:
-            return {"action_probs": normalize_probs({actions[0]: 1.0})}
-
-        others = [a for a in actions if a != prev_action]
-        m = len(others)
-        if m == 0:
-            return {"action_probs": self._uniform_distribution(actions)}
-
-        if won:
-            p_prev = self._stay_probability
-            p_other = (1.0 - self._stay_probability) / m
-        else:
-            p_prev = 1.0 - self._stay_probability
-            p_other = self._stay_probability / m
-
-        raw: dict[Any, float] = {prev_action: p_prev}
-        for a in others:
-            raw[a] = p_other
-
-        floored = {a: max(self._epsilon, raw.get(a, 0.0)) for a in actions}
+        # Tiny floor so no probability is exactly zero (avoids -inf log-loss)
+        floored = {a: max(1e-5, exp_vals[a]) for a in actions}
         return {"action_probs": normalize_probs(floored)}
 
     def _uniform_distribution(self, actions: list[Any]) -> dict[Any, float]:
@@ -149,9 +170,23 @@ class Agent:
         if n == 0:
             return {}
         base = 1.0 / n
-        floored = {a: max(self._epsilon, base) for a in actions}
+        floored = {a: max(1e-5, base) for a in actions}
         return normalize_probs(floored)
 
     def update(self, action: Any, reward: Any, info: Any | None = None) -> None:
-        self._last_action = action
-        self._last_reward = reward
+        if action not in self._q or reward is None:
+            return
+        try:
+            # Normalize to the 0-1 scale the params were fit on. The evaluator
+            # passes 0-1 rewards; the guard divides by 100 if a raw 1-100 reward
+            # ever slips through.
+            r = float(reward)
+            if r > 1.0:
+                r = r / 100.0
+            pe = r - self._q[action]                       # prediction error
+            alpha = self._rl_alpha_pos if pe >= 0.0 else self._rl_alpha_neg  # dual-alpha
+            self._q[action] += alpha * pe                 # the one learning line
+            self._last_choice = action                     # sticky bonus uses this next step
+            self._history_len += 1
+        except (TypeError, ValueError):
+            pass
