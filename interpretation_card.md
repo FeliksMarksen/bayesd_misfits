@@ -1,53 +1,47 @@
-# Interpretation Card — Bayes'd Misfits
+# Interpretation Card Bayes'd Misfits
 
 ## 1. Core Claim
 
-The agent implements a **Dual-Alpha Rescorla-Wagner model with choice stickiness**. It maintains a value estimate $Q_a$ per arm, updated with asymmetric learning rates for positive vs. negative prediction errors, and selects actions via softmax with a perseveration bonus on the last-chosen arm.
-
-**Update rule** (`update()`): $\delta = r - Q_a$, then $Q_a \leftarrow Q_a + \alpha\,\delta$ where $\alpha = \alpha_{+}$ if $\delta \geq 0$, else $\alpha_{-}$.
-
-**Choice rule** (`predict()`): $P(a) \propto \exp\!\bigl(\beta \cdot [Q_a + \mathbb{1}(a = a_{\text{prev}}) \cdot s]\bigr)$
+People update their beliefs faster after disappointments than after confirmations, and they tend to repeat their previous choice regardless of its value. The agent models this with per-arm value estimates, dual learning rates, and a perseveration bonus in the softmax choice rule.
 
 ## 2. Mechanism Mapping
 
-| Parameter | Value | Role in `agent.py` |
-|-----------|-------|---------------------|
-| `rl_alpha_pos` | 0.380 | Learning rate for positive prediction errors (reward ≥ expectation) |
-| `rl_alpha_neg` | 0.763 | Learning rate for negative prediction errors (disappointment) |
-| `sticky` | 0.126 | Value-independent bonus added to the last-chosen arm's logit |
-| `beta` | 8.331 | Softmax inverse temperature |
-| `initial_q` | 0.5 | Starting Q-value for all arms (neutral on [0, 1] scale) |
+| Concept                          | Where it lives                                                   |
+| -------------------------------- | ---------------------------------------------------------------- |
+| Positive prediction error update | `rl_alpha_pos` (0.380): learning rate when reward >= expectation |
+| Negative prediction error update | `rl_alpha_neg` (0.763): learning rate when reward < expectation  |
+| Choice perseveration             | `sticky` (0.126): bonus added to the last-chosen arm's logit     |
+| Choice consistency               | `beta` (8.331): softmax inverse temperature                      |
+| Prior expectation                | `initial_q` (0.5): starting Q-value for all arms                 |
+| Action values                    | `self._q`: updated online each trial via `update()`              |
 
-## 3. Alternative Explanations
+## 3. Discriminative Test
 
-- **HGF:** Tracks environment volatility dynamically but underperforms under softmax because uncertainty of neglected arms grows, causing overcorrection on re-sampling.
-- **Symmetric RW + Decay:** A single learning rate with forgetting fits worse because humans update asymmetrically from wins vs. losses.
+- Removing `sticky` causes `beta` to saturate at ~9.9, because it has to absorb perseveration as choice certainty.
+- Setting `rl_alpha_pos` = `rl_alpha_neg` degrades fit, confirming asymmetric updating.
+- The model should outperform WSLS on sequences where cumulative reward history matters beyond the last trial.
 
-## 4. Discriminative Test
+## 4. Predictive Role
 
-- Removing `sticky` causes $\beta$ to saturate at the prior boundary (~9.9), showing it is forced to absorb perseveration as choice certainty.
-- Forcing $\alpha_{+} = \alpha_{-}$ degrades fit, confirming asymmetric updating.
+The dual learning rates let the model capture how quickly people abandon bad options vs. how gradually they commit to good ones. The stickiness term picks up choice inertia that would otherwise inflate beta. Both components are needed; removing either one hurts fit.
 
-## 5. Predictive Role
+## 5. Failure Conditions
 
-Q-values are updated online via `update()` after every trial, so the agent learns from each reward. $\alpha_{-} > \alpha_{+}$ means bad options are pruned quickly while good options are reinforced gradually. The stickiness term captures choice inertia independently of value, preventing $\beta$ from being overestimated.
+- Learning rates are fixed, so the model cannot adapt to sudden changes in environment drift.
+- No exploration bonus: the softmax rule does not direct choices toward uncertain arms.
+- Same parameters for all arms and trials, so arm- or phase-specific learning is not captured.
+- Rewards outside [0, 1] trigger a heuristic division by 100, which may not suit all tasks.
 
-## 6. Failure Conditions
+## 6. Evidence Summary
 
-- Hyperparameters ($\alpha_{+}$, $\alpha_{-}$, sticky, $\beta$) are fixed from config; the model cannot adapt its learning speed to sudden volatility shifts. (Q-values do update online each trial.)
-- No exploration bonus for uncertain arms (pure softmax).
-- Assumes rewards on a [0, 1] scale (divides by 100 if raw rewards > 1.0).
+Parameters were fitted offline with hierarchical MCMC on training data. The values in `config.yaml` are group-level posterior means. No private data or challenge scores are included.
 
-## 7. Evidence Summary
+## 7. Reproducibility Notes
 
-Hierarchical MCMC fitting on training data. Parameters in `config.yaml` are the group-level posterior means.
+- Agent entrypoint: `agent.py` (`Agent` class).
+- Hyperparameters: `config.yaml` under `model.*`.
+- Fitting script: `scripts/run_comparison.py`.
 
-## 8. Reproducibility Notes
+## 8. Confidentiality Note
 
-- Agent: `agent.py` (`Agent` class).
-- Parameters: `config.yaml` under `model.*`.
-- Fitting: `scripts/run_comparison.py`.
-
-## 9. Confidentiality Note
-
-No secrets, private URLs, or identifiable participant data in this repository.
+Do not add secrets, private URLs with credentials, or identifiable participant data to this card or repository.
