@@ -366,7 +366,7 @@ The evaluator `pip install`s these before importing `agent.py`. `pyyaml` parses 
 
 ## 6. `interpretation_card.md`
 
-A 9-section scientific write-up (community-visible). Sections: Core Claim, Mechanism Mapping, Alternative Explanations, Discriminative Test, Predictive Role, Failure Conditions, Evidence Summary, Reproducibility Notes, Confidentiality. It documents the **Dual-Alpha + Sticky** model: asymmetric learning rates (`alpha_pos=0.38`, `alpha_neg=0.76`), choice stickiness (`sticky=0.126`), and the model-comparison ranking that selected it (NLL 0.6097, best of six). The numbers in the card come from `scripts/run_comparison.py`'s output. If you re-fit and the ranking changes, update this card to match.
+A 9-section scientific write-up (community-visible). Sections: Core Claim, Mechanism Mapping, Alternative Explanations, Discriminative Test, Predictive Role, Failure Conditions, Evidence Summary, Reproducibility Notes, Confidentiality Note. It documents the **Dual-Alpha + Sticky** model: asymmetric learning rates (`alpha_pos=0.38`, `alpha_neg=0.76`), choice stickiness (`sticky=0.126`), and softmax inverse-temperature (`beta=8.33`), all fit offline by hierarchical MCMC (the group-level posterior means shipped in `config.yaml`). The card itself keeps the Evidence Summary brief; the head-to-head model-comparison NLLs (Dual-Alpha+Sticky ≈ 0.61, best of six) live in `scripts/run_comparison.py`'s output (`model_comparison_results_fixed.json`), not the card. If you re-fit and the ranking changes, update that output — and any NLLs you cite — to match.
 
 ---
 
@@ -391,7 +391,7 @@ The fitted parameters are the bridge: the slow, offline Bayesian fit produces nu
 - [x] `Agent` API matches the spec and loads from `agent.py`.
 - [x] `config.yaml` reflects runtime + fitted model params.
 - [x] `submission.yaml` has a complete `runtime_profile`.
-- [x] `submission.yaml` has real `repo_url` / `commit_hash` + team fields.
+- [ ] `submission.yaml` has real `repo_url` / `commit_hash` + team fields — **commit_hash still needs re-pinning to a commit that contains the current agent (see below).**
 - [x] `interpretation_card.md` is complete and non-sensitive.
 - [x] `requirements.txt` lists only needed deps; no heavy unused packages.
 - [x] No secrets, private data, or hidden benchmark files committed.

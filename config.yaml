@@ -2,9 +2,9 @@
 #
 # The evaluator parses this file and passes it to ``Agent.__init__(config)``.
 # ``runtime`` and ``evaluation`` are challenge-required; ``model`` holds the
-# hyperparameters your agent reads in ``__init__``. The keys below currently
-# configure the placeholder WSLS baseline — replace ``model.*`` with your own
-# (e.g. HGF parameters, fitted RL learning rate / temperature, checkpoint URIs).
+# hyperparameters your agent reads in ``__init__``. The keys under ``model.*``
+# below are the offline-fitted Dual-Alpha + Sticky RL parameters (asymmetric
+# learning rates, choice stickiness, softmax inverse-temperature).
 
 runtime:
   random_seed: 2026
