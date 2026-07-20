@@ -1,0 +1,141 @@
+{
+  "n_sub": 30,
+  "n_trials": 120,
+  "chains": 2,
+  "tune": 500,
+  "draws": 500,
+  "results": {
+    "RW": {
+      "mean": 0.6824615282952626,
+      "sd": 0.0010213811717766949,
+      "hdi3": 0.680809916608384,
+      "hdi97": 0.6838040354604238
+    },
+    "RW+Decay": {
+      "mean": 0.7718427342580771,
+      "sd": 0.007722534234059264,
+      "hdi3": 0.7598766403708157,
+      "hdi97": 0.7849314262456705
+    },
+    "DualAlpha": {
+      "mean": 0.6741285458802351,
+      "sd": 0.003930199982651813,
+      "hdi3": 0.6692472360442877,
+      "hdi97": 0.6785909485361029
+    },
+    "DualAlpha+Decay": {
+      "mean": 0.775313028876695,
+      "sd": 0.010358698229797928,
+      "hdi3": 0.7623851072339717,
+      "hdi97": 0.7864735337364617
+    },
+    "HGF": {
+      "mean": 0.7300932374843883,
+      "sd": 0.008874545315010366,
+      "hdi3": 0.7211252360846636,
+      "hdi97": 0.7444349253526051
+    }
+  },
+  "params": {
+    "RW": {
+      "rl_alpha_Intercept": {
+        "mean": 0.561,
+        "sd": 0.028,
+        "eti89_lb": 0.517,
+        "eti89_ub": 0.608
+      },
+      "beta_Intercept": {
+        "mean": 9.788,
+        "sd": 0.051,
+        "eti89_lb": 9.701,
+        "eti89_ub": 9.882
+      }
+    },
+    "RW+Decay": {
+      "rl_alpha_Intercept": {
+        "mean": 0.748,
+        "sd": 0.007,
+        "eti89_lb": 0.737,
+        "eti89_ub": 0.759
+      },
+      "rl_decay_Intercept": {
+        "mean": 0.218,
+        "sd": 0.009,
+        "eti89_lb": 0.199,
+        "eti89_ub": 0.227
+      },
+      "beta_Intercept": {
+        "mean": 8.872,
+        "sd": 0.106,
+        "eti89_lb": 8.706,
+        "eti89_ub": 9.022
+      }
+    },
+    "DualAlpha": {
+      "rl_alpha_pos_Intercept": {
+        "mean": 0.509,
+        "sd": 0.072,
+        "eti89_lb": 0.416,
+        "eti89_ub": 0.584
+      },
+      "rl_alpha_neg_Intercept": {
+        "mean": 0.593,
+        "sd": 0.019,
+        "eti89_lb": 0.57,
+        "eti89_ub": 0.616
+      },
+      "beta_Intercept": {
+        "mean": 9.796,
+        "sd": 0.019,
+        "eti89_lb": 9.771,
+        "eti89_ub": 9.823
+      }
+    },
+    "DualAlpha+Decay": {
+      "rl_alpha_pos_Intercept": {
+        "mean": 0.744,
+        "sd": 0.034,
+        "eti89_lb": 0.706,
+        "eti89_ub": 0.781
+      },
+      "rl_alpha_neg_Intercept": {
+        "mean": 0.503,
+        "sd": 0.051,
+        "eti89_lb": 0.449,
+        "eti89_ub": 0.558
+      },
+      "rl_decay_Intercept": {
+        "mean": 0.218,
+        "sd": 0.015,
+        "eti89_lb": 0.2,
+        "eti89_ub": 0.235
+      },
+      "beta_Intercept": {
+        "mean": 8.763,
+        "sd": 0.131,
+        "eti89_lb": 8.622,
+        "eti89_ub": 8.901
+      }
+    },
+    "HGF": {
+      "omega_Intercept": {
+        "mean": -2.846,
+        "sd": 0.439,
+        "eti89_lb": -3.24,
+        "eti89_ub": -2.017
+      },
+      "kappa_Intercept": {
+        "mean": 0.857,
+        "sd": 0.157,
+        "eti89_lb": 0.689,
+        "eti89_ub": 1.039
+      },
+      "beta_Intercept": {
+        "mean": 9.687,
+        "sd": 0.083,
+        "eti89_lb": 9.576,
+        "eti89_ub": 9.777
+      }
+    }
+  }
+}

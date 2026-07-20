@@ -337,3 +337,142 @@ class NArmRWDriftLearner:
             self._state, trial_params,
             context={"choice": action, self._feedback_field: reward},
         )
+
+
+# ---------------------------------------------------------------------------
+# Dual-alpha RW: separate learning rates for positive/negative PEs
+# ---------------------------------------------------------------------------
+
+
+class NArmDualAlphaRW:
+    """N-arm Rescorla-Wagner with separate learning rates for positive and
+    negative prediction errors.
+
+    A well-known improvement over standard RW (Cazé & van der Meer, 2016;
+    Lefebvre et al., 2017): participants may learn differently from positive
+    surprises (reward > expectation) vs. negative surprises (reward < expectation).
+
+    Update rule:
+        PE = reward - Q[chosen]
+        if PE > 0:  Q[chosen] += alpha_pos * PE
+        else:       Q[chosen] += alpha_neg * PE
+
+    Free parameters:
+    - ``rl_alpha_pos`` — learning rate for positive prediction errors.
+    - ``rl_alpha_neg`` — learning rate for negative prediction errors.
+    - ``beta``         — inverse temperature (owned by the softmax decision process).
+
+    Optional ``use_decay`` adds a forgetting rate ``rl_decay`` like
+    ``NArmRescorlaWagner``.
+    """
+
+    def __init__(
+        self,
+        n_actions: int = 4,
+        initial_q: float = 0.5,
+        feedback_field: str = "feedback",
+        use_decay: bool = False,
+    ):
+        self._n_actions = n_actions
+        self._initial_q = initial_q
+        self._feedback_field = feedback_field
+        self._use_decay = use_decay
+        self._state: dict[str, Any] | None = None
+
+    @property
+    def computed_params(self) -> list[str]:
+        return [f"q{i}" for i in range(self._n_actions)]
+
+    @property
+    def free_params(self) -> list[str]:
+        params = ["rl_alpha_pos", "rl_alpha_neg"]
+        if self._use_decay:
+            params.append("rl_decay")
+        return params
+
+    @property
+    def param_bounds(self) -> dict[str, tuple[float, float]]:
+        bounds = {"rl_alpha_pos": (0.0, 1.0), "rl_alpha_neg": (0.0, 1.0)}
+        if self._use_decay:
+            bounds["rl_decay"] = (0.0, 1.0)
+        return bounds
+
+    @property
+    def default_params(self) -> dict[str, float]:
+        defaults = {"rl_alpha_pos": 0.3, "rl_alpha_neg": 0.1}
+        if self._use_decay:
+            defaults["rl_decay"] = 0.0
+        return defaults
+
+    @property
+    def available_backends(self) -> tuple[str, ...]:
+        return ("python", "jax")
+
+    @property
+    def supports_gradient(self) -> bool:
+        return True
+
+    @property
+    def required_context_fields(self) -> list[str]:
+        return ["choice", self._feedback_field]
+
+    def init_state(self) -> dict[str, Any]:
+        return {"q_values": np.full(self._n_actions, self._initial_q, dtype=np.float64)}
+
+    def init_jax_state(self) -> dict[str, Any]:
+        return {"q_values": jnp.full((self._n_actions,), self._initial_q)}
+
+    def reset(self, **kwargs) -> None:
+        self._state = self.init_state()
+
+    def compute_python(self, state, params, context):
+        q = state["q_values"]
+        return {f"q{i}": float(q[i]) for i in range(self._n_actions)}
+
+    def compute_jax(self, state, params, context):
+        q = state["q_values"]
+        return {f"q{i}": q[i] for i in range(self._n_actions)}
+
+    def update_python(self, state, params, context):
+        choice = int(context["choice"])
+        feedback = float(context[self._feedback_field])
+        a_pos = params["rl_alpha_pos"]
+        a_neg = params["rl_alpha_neg"]
+        q = np.asarray(state["q_values"], dtype=np.float64).copy()
+
+        if self._use_decay:
+            decay = params.get("rl_decay", 0.0)
+            q = (1.0 - decay) * q + decay * self._initial_q
+
+        pe = feedback - q[choice]
+        alpha = a_pos if pe >= 0 else a_neg
+        q[choice] += alpha * pe
+        return {"q_values": q}
+
+    def update_jax(self, state, params, context):
+        choice = context["choice"]
+        feedback = context[self._feedback_field]
+        a_pos = params["rl_alpha_pos"]
+        a_neg = params["rl_alpha_neg"]
+        q = state["q_values"]
+
+        if self._use_decay:
+            decay = params.get("rl_decay", 0.0)
+            q = (1.0 - decay) * q + decay * self._initial_q
+
+        pe = feedback - q[choice]
+        alpha = jnp.where(pe >= 0, a_pos, a_neg)
+        return {"q_values": q.at[choice].add(alpha * pe)}
+
+    def compute_ssm_params(self, trial_params):
+        if self._state is None:
+            raise RuntimeError("Call reset() before compute_ssm_params()")
+        return self.compute_python(self._state, trial_params, context={})
+
+    def update(self, action, reward, trial_params):
+        if self._state is None:
+            raise RuntimeError("Call reset() before update()")
+        self._state = self.update_python(
+            self._state, trial_params,
+            context={"choice": action, self._feedback_field: reward},
+        )

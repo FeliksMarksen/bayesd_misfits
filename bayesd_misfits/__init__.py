@@ -10,7 +10,7 @@ from bayesd_misfits.data import (
     summarize_data,
     validate_for_hssm,
 )
-from bayesd_misfits.model import NArmRescorlaWagner, NArmRWDriftLearner
+from bayesd_misfits.model import NArmRescorlaWagner, NArmRWDriftLearner, NArmDualAlphaRW
 from bayesd_misfits.hgf import NArmHGF, NArmHGFDriftLearner
 
 __all__ = [
@@ -24,6 +24,7 @@ __all__ = [
     "validate_for_hssm",
     "NArmRescorlaWagner",
     "NArmRWDriftLearner",
+    "NArmDualAlphaRW",
     "NArmHGF",
     "NArmHGFDriftLearner",
 ]
