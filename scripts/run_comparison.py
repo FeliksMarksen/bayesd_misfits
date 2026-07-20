@@ -8,12 +8,14 @@ Fixes vs notebooks:
   - sticky model: now included in comparison
 
 Divergence/stability fixes (this revision):
-  - float64 (was float32): stabilizes HGF's precision/exp updates, which
-    round badly at ~7 digits and produced garbage gradients.
-  - NLL via log-mean-exp over draws (posterior-predictive); was a per-draw
-    mean of -log p, which let a few outlier high-β draws blow up to 1e6+.
+  - NLL via log-mean-exp over draws (posterior-predictive) across all six
+    nll_* functions; was a per-draw mean of -log p, which let a few outlier
+    high-β draws blow up to 1e6+. (This is the fix that makes the comparison
+    trustworthy.)
   - target_accept=0.99 for HGF (was 0.95) — smaller steps for its tricky geometry.
   - sampler diagnostics (divergences, max R-hat) saved per model.
+  - floatX kept at float32: a float64 trial broke the RW family (4000/4000
+    divergences) under numpyro default initvals, so it was reverted.
 
 Usage:
   cd bayesd_misfits
@@ -46,9 +48,12 @@ from bayesd_misfits.hgf import NArmHGF
 
 warnings.filterwarnings("ignore")
 logging.getLogger("jax._src.xla_bridge").setLevel("ERROR")
-# float64 (not float32): HGF computes 1/sigma and exp(kappa*mu2+omega); float32's
-# ~7 digits round these enough to produce bad gradients and divergences.
-hssm.set_floatX("float64", update_jax=True)
+# float32 (NOT float64): an earlier attempt used float64 to stabilize HGF, but it
+# catastrophically broke the RW-family geometry (4000/4000 divergences, R-hat 3.66)
+# under numpyro's default initvals. float32 was the setting that produced sensible
+# RW/DualAlpha fits, so we keep it. HGF stability is handled instead via its tighter
+# target_accept (0.99) and the outlier-robust log-mean-exp NLL.
+hssm.set_floatX("float32", update_jax=True)
 
 SEED = 20260719
 FULL_RUN = os.environ.get("FULL_RUN", "0") == "1"
