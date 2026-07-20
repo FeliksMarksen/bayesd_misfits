@@ -1,0 +1,10 @@
+# Dependencies the evaluator pip-installs before importing agent.py.
+# Keep minimal — list only what agent.py actually imports at eval time.
+# (Offline model fitting with HSSM/ssms happens in notebooks; fitted params
+# ship in config.yaml, so the heavy HSSM stack is NOT needed here.)
+#
+# NumPy 2.3+ requires Python >=3.11; pin below 2.3 so Python 3.10 CI still resolves.
+numpy>=1.26,<2.3
+pyyaml>=6.0
+# Add your model's runtime deps here when you replace the WSLS baseline, e.g.:
+# pyhgf>=0.3

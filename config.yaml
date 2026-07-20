@@ -1,0 +1,24 @@
+# Bayes'd Misfits — MindRL Challenge runtime + model configuration.
+#
+# The evaluator parses this file and passes it to ``Agent.__init__(config)``.
+# ``runtime`` and ``evaluation`` are challenge-required; ``model`` holds the
+# hyperparameters your agent reads in ``__init__``. The keys below currently
+# configure the placeholder WSLS baseline — replace ``model.*`` with your own
+# (e.g. HGF parameters, fitted RL learning rate / temperature, checkpoint URIs).
+
+runtime:
+  random_seed: 2026
+  device: cpu
+  execution_type: local_python
+  requires_gpu: false
+  requires_external_api: false
+
+model:
+  name: wsls_baseline          # TODO: rename to your model (e.g. hgf, rl_softmax)
+  type: cognitive_baseline      # TODO: e.g. bayesian_cognitive_model
+  win_threshold: 0.5            # WSLS placeholder — replace with your params
+  stay_probability: 0.85
+  epsilon: 0.05
+
+evaluation:
+  allow_online_state_updates: true

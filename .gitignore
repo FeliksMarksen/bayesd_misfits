@@ -19,3 +19,14 @@ hf_cache/
 *.egg-info/
 build/
 dist/
+
+# MindRL submission — keep submission artifacts out of git
+scores.json
+validation_report.json
+.env
+.env.*
+secrets.env
+*.log
+artifacts/*
+!artifacts/README.md
+.DS_Store

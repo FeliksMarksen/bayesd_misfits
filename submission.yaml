@@ -1,0 +1,49 @@
+# MindRL Challenge — Bayes'd Misfits submission metadata.
+#
+# Fill in the TODO fields (commit_hash, member details) before a real
+# submission. The ``runtime_profile`` block is mandatory and tells organizers
+# how to route evaluation before cloning the repo. Even GPU/API/LLM submissions
+# must still expose a callable ``Agent`` class — this block only declares
+# routing, it does not change the API. Never commit secrets; list names only.
+
+team:
+  team_id: bayesd_misfits
+  display_name: Bayes'd Misfits
+  members:
+    - name: TODO
+      email: TODO
+      role: modeler
+
+submission:
+  visibility: internal
+  method_family: bayesian_cognitive_model
+  short_description: "Cognitive modeling for the MindRL 4-arm restless bandit using HGF / HSSM-fitted RL agents."
+  repo_url: https://github.com/FeliksMarksen/bayesd_misfits.git
+  commit_hash: TODO
+  agent_path: agent.py
+  config_path: config.yaml
+  requirements_path: requirements.txt
+  interpretation_card_path: interpretation_card.md
+
+optional_targets: []            # add ["response_time"] to opt into the RT auxiliary leaderboard
+
+runtime_profile:
+  execution_type: local_python        # local_python | gpu_model | external_api | hybrid
+  model_family: symbolic_cognitive     # symbolic_cognitive | neural | llm_agent | auditing | hybrid | other
+  requires_gpu: false
+  gpu_type: null
+  requires_external_api: false
+  required_secrets: []                 # e.g. ["OPENAI_API_KEY"]; leave empty when none
+  estimated_eval_cost: none            # none | low | medium | high
+  expected_runtime_minutes: null
+  notes: "Placeholder WSLS baseline runs fully in-process on CPU. Update this block once the real model is wired in (e.g. if HGF inference needs a GPU)."
+
+artifacts:
+  hf_checkpoint: null                  # Hugging Face URI for large fitted checkpoints, if any
+  external_weights: null
+  notes: "No external artifacts required for the placeholder baseline."
+
+policy:
+  ip_owner: submitting_team
+  access_scope: challenge_internal
+  public_release_opt_in: false
