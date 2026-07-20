@@ -2,9 +2,7 @@
 MindRL Challenge — Bayes'd Misfits submission agent.
 
 This module defines the public ``Agent`` class the evaluator imports and calls.
-It currently ships a **valid Win-Stay-Lose-Shift (WSLS) cognitive baseline** so
-the bundle passes validation while the real model (HGF / HSSM / RL) is being
-developed. Replace the body of the four methods with your own model while
+It implements the fitted Dual-Alpha + Sticky reinforcement-learning model while
 keeping the public API stable:
 
     class Agent:
@@ -87,6 +85,9 @@ class Agent:
         self._sticky = float(get_field(model, "sticky", 0.126))
         self._beta = float(get_field(model, "beta", 8.331))
         self._initial_q = float(get_field(model, "initial_q", 0.5))
+        self._reward_scale = float(get_field(model, "reward_scale", 1.0))
+        if not math.isfinite(self._reward_scale) or self._reward_scale <= 0.0:
+            raise ValueError("model.reward_scale must be a positive finite number")
 
         self._available_actions: list[Any] = []
         self._q: dict[Any, float] = {}
@@ -109,6 +110,10 @@ class Agent:
         self._last_choice = None
         self._history_len = 0
 
+    def _normalize_reward(self, reward: Any) -> float:
+        """Convert evaluator rewards to the 0-1 scale used during fitting."""
+        return float(reward) / self._reward_scale
+
     def predict(self, history: Any) -> dict[str, dict[Any, float]]:
         actions = list(self._available_actions)
         if not actions:
@@ -121,23 +126,12 @@ class Agent:
             q = {a: self._initial_q for a in actions}
             last_choice = None
             
-            # Detect reward scale dynamically from history
-            max_rew = 0.0
-            for trial in hist:
-                rew = get_field(trial, "reward", default=None)
-                if rew is not None:
-                    try:
-                        max_rew = max(max_rew, abs(float(rew)))
-                    except (TypeError, ValueError):
-                        pass
-            scale = 100.0 if max_rew > 1.0 else 1.0
-            
             for trial in hist:
                 act = get_field(trial, "action", default=None)
                 rew = get_field(trial, "reward", default=None)
                 if act is not None and act in q and rew is not None:
                     try:
-                        r = float(rew) / scale
+                        r = self._normalize_reward(rew)
                         pe = r - q[act]
                         alpha = self._rl_alpha_pos if pe >= 0.0 else self._rl_alpha_neg
                         q[act] += alpha * pe
@@ -152,7 +146,8 @@ class Agent:
         for a in actions:
             val = self._q[a]
             if self._last_choice is not None and a == self._last_choice:
-                val += self._sticky      # perseveration bonus on the last-chosen arm
+                # Q-scale perseveration bonus; its logit contribution is beta * sticky.
+                val += self._sticky
             values[a] = val
 
         # Numerically stable softmax (shift by max so exp never overflows)
@@ -177,12 +172,7 @@ class Agent:
         if action not in self._q or reward is None:
             return
         try:
-            # Normalize to the 0-1 scale the params were fit on. The evaluator
-            # passes 0-1 rewards; the guard divides by 100 if a raw 1-100 reward
-            # ever slips through.
-            r = float(reward)
-            if r > 1.0:
-                r = r / 100.0
+            r = self._normalize_reward(reward)
             pe = r - self._q[action]                       # prediction error
             alpha = self._rl_alpha_pos if pe >= 0.0 else self._rl_alpha_neg  # dual-alpha
             self._q[action] += alpha * pe                 # the one learning line
