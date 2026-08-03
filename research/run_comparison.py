@@ -1,4 +1,4 @@
-"""Fit and compare eight N-arm bandit learning models.
+"""Fit and compare nine N-arm bandit learning models.
 
 The comparison is deliberately deployment-oriented:
 
@@ -58,6 +58,7 @@ from bayesd_misfits.model import (
     NArmDualAlphaRW,
     NArmRescorlaWagner,
     NArmRWDualAlphaSticky,
+    NArmRWDriftLearner,
     NArmRWSticky,
 )
 
@@ -100,6 +101,12 @@ PRIOR_SPECS: dict[str, tuple[float, float, float, float, float]] = {
     "omega": (-8.0, 2.0, -2.0, 1.00, 0.50),
     "kappa": (0.0, 4.0, 1.0, 0.50, 0.10),
     "beta": (0.0, 15.0, 5.0, 2.00, 0.50),
+    # Race-model decision parameters (for race_no_bias_angle_4)
+    "scaler": (0.001, 10.0, 2.0, 1.00, 0.20),
+    "a": (1.0, 3.0, 2.0, 0.30, 0.10),
+    "z": (0.0, 0.9, 0.5, 0.10, 0.05),
+    "t": (0.0, 2.0, 0.3, 0.10, 0.05),
+    "theta": (-0.1, 1.45, 0.0, 0.30, 0.10),
 }
 
 
@@ -156,7 +163,7 @@ def hierarchical_param(name: str) -> hssm.Param:
     )
 
 
-def load_split_data() -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+def load_split_data(include_rt: bool = False) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
     """Load complete trajectories and split them by human subject."""
     ensure_data_downloaded()
     df = load_challenge_data(
@@ -198,9 +205,10 @@ def load_split_data() -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
         }
         selected["participant_id"] = selected["participant_id"].map(id_map)
         selected = selected.sort_values(["participant_id", "trial_id"])
-        return selected[
-            ["participant_id", "trial_id", "response", "feedback"]
-        ].reset_index(drop=True)
+        cols = ["participant_id", "trial_id", "response", "feedback"]
+        if include_rt:
+            cols.append("rt")
+        return selected[cols].reset_index(drop=True)
 
     train_data = select(train_ids)
     valid_data = select(valid_ids)
@@ -226,14 +234,18 @@ def _make_config(
     learner: Any,
     env: Bandit,
     params: list[str],
+    decision: str = "inv_temp_softmax_4",
+    response: list[str] | None = None,
 ) -> ModelConfig:
+    if response is None:
+        response = ["response"]
     config = ModelConfig(
-        "inv_temp_softmax_4",
+        decision,
         description,
-        "inv_temp_softmax_4",
+        decision,
         learner,
         env,
-        response=["response"],
+        response=response,
     )
     config.bounds.update({name: PRIOR_SPECS[name][:2] for name in params})
     config.params_default = [PRIOR_SPECS[name][2] for name in config.list_params]
@@ -313,12 +325,24 @@ def build_models() -> dict[str, dict[str, Any]]:
             ),
             ["omega", "kappa", "sticky", "beta"],
         ),
+        # ── Race-model variant (decision module: race_no_bias_angle_4) ──
+        (
+            "RW+Race",
+            "RW+race",
+            lambda: NArmRWDriftLearner(4),
+            ["rl_alpha", "scaler", "a", "z", "t", "theta"],
+            "race_no_bias_angle_4",
+            ["rt", "response"],
+        ),
     ]
 
     models: dict[str, dict[str, Any]] = {}
-    for name, description, factory, params in definitions:
+    for entry in definitions:
+        name, description, factory, params = entry[:4]
+        decision = entry[4] if len(entry) > 4 else "inv_temp_softmax_4"
+        response = entry[5] if len(entry) > 5 else None
         learner = factory()
-        config = _make_config(description, learner, env, params)
+        config = _make_config(description, learner, env, params, decision=decision, response=response)
         actual_bounds = {param: tuple(config.bounds[param]) for param in params}
         requested_bounds = {param: PRIOR_SPECS[param][:2] for param in params}
         if actual_bounds != requested_bounds:
@@ -331,6 +355,7 @@ def build_models() -> dict[str, dict[str, Any]]:
             "bounds": actual_bounds,
             "learner_factory": factory,
             "include": [hierarchical_param(param) for param in params],
+            "is_race": decision != "inv_temp_softmax_4",
         }
     return models
 
@@ -422,6 +447,44 @@ def heldout_population_nll(
     return -logsumexp(log_probs, axis=0) + np.log(log_probs.shape[0])
 
 
+def heldout_race_nll(
+    model: Any,
+    idata: Any,
+    data: pd.DataFrame,
+    spec: dict[str, Any],
+) -> np.ndarray:
+    """Compute held-out NLL for race models via HSSM's log_likelihood.
+
+    Race models use an approx_differentiable (neural-network) likelihood that
+    cannot be computed manually like softmax.  This function delegates to
+    HSSM's ``model.log_likelihood`` which has access to the trained network.
+
+    The posterior is used as-is (full hierarchical draws).  For held-out
+    participants whose random effects are not in the posterior, HSSM falls
+    back to population-level intercepts — matching the population-only scoring
+    used for softmax models.
+    """
+    # Offset participant IDs so held-out subjects don't collide with training
+    # subjects in the posterior's random-effects arrays.
+    offset_data = data.copy()
+    offset = 100_000
+    offset_data["participant_id"] = offset_data["participant_id"] + offset
+
+    dt = model.log_likelihood(dt=idata, data=offset_data, inplace=False)
+
+    # Extract per-draw, per-trial log-likelihood from the DataTree.
+    ll_group = dt["log_likelihood"]
+    if hasattr(ll_group, "to_dataset"):
+        ll_group = ll_group.to_dataset()
+    # The response variable name is typically "response" in the log_likelihood group.
+    ll_var = list(ll_group.data_vars)[0]
+    ll = np.asarray(ll_group[ll_var].values)  # shape: (chain, draw, obs)
+    ll = ll.reshape(-1, ll.shape[-1])          # (n_draws, n_trials)
+
+    # Log-mean-exp NLL: -log(mean_d exp(ll_d)) per trial
+    return -logsumexp(ll, axis=0) + np.log(ll.shape[0])
+
+
 def population_parameter_summary(
     idata: Any,
     params: list[str],
@@ -511,7 +574,12 @@ def sampler_diagnostics(idata: Any) -> dict[str, Any]:
     }
 
 
-def fit_model(name: str, spec: dict[str, Any], data: pd.DataFrame) -> Any:
+def fit_model(name: str, spec: dict[str, Any], data: pd.DataFrame) -> tuple[Any, Any]:
+    """Fit a model and return (model, idata).
+
+    The model object is retained so race-model NLL scoring can use
+    HSSM's ``log_likelihood`` method with the neural-network likelihood.
+    """
     model_config = hssm.rl.RLSSMConfig.from_ssms_model(spec["config"])
     model = hssm.RLSSM(
         data=data,
@@ -522,7 +590,7 @@ def fit_model(name: str, spec: dict[str, Any], data: pd.DataFrame) -> Any:
         include=spec["include"],
     )
     target_accept = 0.99 if name.startswith("HGF") else 0.97
-    return model.sample(
+    idata = model.sample(
         sampler=SAMPLER,
         draws=N_DRAWS,
         tune=N_TUNE,
@@ -533,6 +601,7 @@ def fit_model(name: str, spec: dict[str, Any], data: pd.DataFrame) -> Any:
         progressbar=False,
         idata_kwargs={"log_likelihood": False},
     )
+    return model, idata
 
 
 def main() -> None:
@@ -548,14 +617,16 @@ def main() -> None:
     )
     print("=" * 72)
 
-    train_data, valid_data, split_info = load_split_data()
+    train_data, valid_data, split_info = load_split_data(
+        include_rt=any(spec.get("is_race", False) for spec in build_models().values())
+    )
     models = build_models()
     results: dict[str, dict[str, Any]] = {}
 
     for name, spec in models.items():
         print(f"\n{'=' * 72}\nFitting {name}...")
         try:
-            idata = fit_model(name, spec, train_data)
+            model, idata = fit_model(name, spec, train_data)
             diagnostics = sampler_diagnostics(idata)
             status = "PASS" if diagnostics["pass"] else "FAIL"
             rhat_text = (
@@ -581,7 +652,11 @@ def main() -> None:
                 print("  " + "; ".join(diagnostics["failures"]))
 
             print("Scoring held-out trajectories with population parameters...")
-            nll = heldout_population_nll(idata, valid_data, spec)
+            if spec.get("is_race", False):
+                print("  (using HSSM log_likelihood for neural-network race model)")
+                nll = heldout_race_nll(model, idata, valid_data, spec)
+            else:
+                nll = heldout_population_nll(idata, valid_data, spec)
             results[name] = {
                 "status": "ok",
                 "eligible": diagnostics["pass"],
