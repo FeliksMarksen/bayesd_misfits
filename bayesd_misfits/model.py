@@ -361,6 +361,118 @@ class NArmDualAlphaRW:
         )
 
 
+class NArmRWSticky:
+    """N-arm single-alpha RW with choice stickiness (perseveration).
+
+    Like :class:`NArmRWDualAlphaSticky` but with a single learning rate
+    shared across positive and negative prediction errors.  Useful for
+    isolating the contribution of stickiness from the dual-alpha asymmetry.
+    """
+
+    def __init__(
+        self,
+        n_actions: int = 4,
+        initial_q: float = 0.5,
+        feedback_field: str = "feedback",
+    ):
+        self._n_actions = n_actions
+        self._initial_q = initial_q
+        self._feedback_field = feedback_field
+        self._state: dict[str, Any] | None = None
+
+    @property
+    def computed_params(self) -> list[str]:
+        return [f"q{i}" for i in range(self._n_actions)]
+
+    @property
+    def free_params(self) -> list[str]:
+        return ["rl_alpha", "sticky"]
+
+    @property
+    def param_bounds(self) -> dict[str, tuple[float, float]]:
+        return {"rl_alpha": (0.0, 1.0), "sticky": (-5.0, 5.0)}
+
+    @property
+    def default_params(self) -> dict[str, float]:
+        return {"rl_alpha": 0.2, "sticky": 0.0}
+
+    @property
+    def available_backends(self) -> tuple[str, ...]:
+        return ("python", "jax")
+
+    @property
+    def supports_gradient(self) -> bool:
+        return True
+
+    @property
+    def required_context_fields(self) -> list[str]:
+        return ["choice", self._feedback_field]
+
+    def init_state(self) -> dict[str, Any]:
+        return {
+            "q_values": np.full(self._n_actions, self._initial_q, dtype=np.float64),
+            "last_choice": -1,
+        }
+
+    def init_jax_state(self) -> dict[str, Any]:
+        return {
+            "q_values": jnp.full((self._n_actions,), self._initial_q),
+            "last_choice": -1,
+        }
+
+    def reset(self, **kwargs) -> None:
+        self._state = self.init_state()
+
+    def compute_python(self, state, params, context):
+        q = state["q_values"].copy()
+        sticky = params["sticky"]
+        last = state["last_choice"]
+        if last >= 0:
+            q[last] += sticky
+        return {f"q{i}": float(q[i]) for i in range(self._n_actions)}
+
+    def compute_jax(self, state, params, context):
+        q = state["q_values"]
+        sticky = params["sticky"]
+        last = state["last_choice"]
+        q_biased = jnp.where(
+            jnp.arange(self._n_actions) == last, q + sticky, q,
+        )
+        return {f"q{i}": q_biased[i] for i in range(self._n_actions)}
+
+    def update_python(self, state, params, context):
+        choice = int(context["choice"])
+        feedback = float(context[self._feedback_field])
+        alpha = params["rl_alpha"]
+        q = np.asarray(state["q_values"], dtype=np.float64).copy()
+
+        q[choice] += alpha * (feedback - q[choice])
+        return {"q_values": q, "last_choice": choice}
+
+    def update_jax(self, state, params, context):
+        choice = context["choice"]
+        feedback = context[self._feedback_field]
+        alpha = params["rl_alpha"]
+        q = state["q_values"]
+
+        delta = feedback - q[choice]
+        new_q = q.at[choice].add(alpha * delta)
+        return {"q_values": new_q, "last_choice": choice}
+
+    def compute_ssm_params(self, trial_params):
+        if self._state is None:
+            raise RuntimeError("Call reset() before compute_ssm_params()")
+        return self.compute_python(self._state, trial_params, context={})
+
+    def update(self, action, reward, trial_params):
+        if self._state is None:
+            raise RuntimeError("Call reset() before update()")
+        self._state = self.update_python(
+            self._state, trial_params,
+            context={"choice": action, self._feedback_field: reward},
+        )
+
+
 class NArmRWDualAlphaSticky:
     """N-arm dual-alpha RW with choice stickiness (perseveration).
 

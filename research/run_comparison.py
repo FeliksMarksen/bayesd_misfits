@@ -1,4 +1,4 @@
-"""Fit and compare seven N-arm bandit learning models.
+"""Fit and compare eight N-arm bandit learning models.
 
 The comparison is deliberately deployment-oriented:
 
@@ -58,6 +58,7 @@ from bayesd_misfits.model import (
     NArmDualAlphaRW,
     NArmRescorlaWagner,
     NArmRWDualAlphaSticky,
+    NArmRWSticky,
 )
 
 warnings.filterwarnings("ignore")
@@ -271,6 +272,12 @@ def build_models() -> dict[str, dict[str, Any]]:
             "DualAlpha+decay",
             lambda: NArmDualAlphaRW(4, use_decay=True),
             ["rl_alpha_pos", "rl_alpha_neg", "rl_decay", "beta"],
+        ),
+        (
+            "RW+Sticky",
+            "RW+sticky",
+            lambda: NArmRWSticky(4),
+            ["rl_alpha", "sticky", "beta"],
         ),
         (
             "Sticky",
