@@ -11,7 +11,7 @@ from bayesd_misfits.data import (
     validate_for_hssm,
 )
 from bayesd_misfits.model import NArmRescorlaWagner, NArmRWDriftLearner, NArmDualAlphaRW, NArmRWDualAlphaSticky
-from bayesd_misfits.hgf import NArmHGF, NArmHGFDriftLearner
+from bayesd_misfits.hgf import NArmHGF, NArmHGFDriftLearner, NArmHGFSticky
 
 __all__ = [
     "ensure_data_downloaded",
@@ -27,5 +27,6 @@ __all__ = [
     "NArmDualAlphaRW",
     "NArmRWDualAlphaSticky",
     "NArmHGF",
+    "NArmHGFSticky",
     "NArmHGFDriftLearner",
 ]

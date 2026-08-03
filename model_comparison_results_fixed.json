@@ -1,48 +1,488 @@
 {
-  "n_sub": 30,
-  "n_trials": 120,
+  "run_type": "diagnostic",
+  "seed": 20260719,
+  "floatX": "float32",
+  "sampler": "numpyro",
   "chains": 2,
   "tune": 500,
   "draws": 500,
-  "obs_precision": 20.0,
-  "beta_upper": 15,
-  "decay_upper": 0.15,
+  "posterior_draws_for_scoring": 200,
+  "n_trials_per_trajectory": 120,
+  "split": {
+    "available_complete_trajectories": 1981,
+    "available_subjects": 662,
+    "train_trajectories": 20,
+    "validation_trajectories": 60,
+    "train_rows": 2400,
+    "validation_rows": 7200,
+    "subject_overlap": 0
+  },
+  "evaluation": {
+    "data": "held-out trajectories from disjoint human subjects",
+    "parameters": "population intercepts only (no participant random effects)",
+    "metric": "one-step-ahead posterior predictive log-mean-exp NLL"
+  },
+  "diagnostic_thresholds": {
+    "scope": "R-hat/ESS on population intercepts and random-effect scales; divergences/BFMI global",
+    "max_rhat": 1.01,
+    "min_bulk_ess": 100,
+    "min_bfmi": 0.3,
+    "max_divergences": 0
+  },
+  "hgf_constants": {
+    "obs_precision": 20.0,
+    "initial_mu1": 0.5,
+    "initial_mu2": -1.0,
+    "initial_sigma1": 0.25,
+    "initial_sigma2": 1.0,
+    "theta_var": 0.01,
+    "volatility_update": "unbounded HGF two-expansion update"
+  },
+  "best_model": "Sticky",
   "results": {
     "RW": {
-      "mean": 0.7081152974198429,
-      "sd": 0.012766954361297987,
-      "hdi3": 0.6910344316437199,
-      "hdi97": 0.7203855036844621
+      "status": "ok",
+      "eligible": true,
+      "heldout_nll_mean": 0.6282238440126063,
+      "heldout_nll_sd": 0.8771728768724166,
+      "heldout_nll_se": 0.010337581491823305,
+      "heldout_nll_q03": 0.018053894944642757,
+      "heldout_nll_q97": 3.1249098858313302,
+      "heldout_total_nll": 4523.211676890765,
+      "diagnostics": {
+        "pass": true,
+        "failures": [],
+        "divergences": 0,
+        "max_rhat": 1.0016992599650594,
+        "min_bulk_ess": 571.2814751080349,
+        "min_bfmi": 0.8084124917168458,
+        "checked_variables": [
+          "rl_alpha_Intercept",
+          "beta_1|participant_id_sigma",
+          "rl_alpha_1|participant_id_sigma",
+          "beta_Intercept"
+        ]
+      },
+      "population_parameters": {
+        "rl_alpha": {
+          "mean": 0.5512840073383188,
+          "sd": 0.0591961098601107,
+          "q03": 0.4399737821078524,
+          "q97": 0.6632587791669124
+        },
+        "beta": {
+          "mean": 12.23461292430669,
+          "sd": 0.45377356686925524,
+          "q03": 11.305375477116769,
+          "q97": 13.024630291438152
+        }
+      },
+      "parameter_bounds": {
+        "rl_alpha": [
+          0.0,
+          1.0
+        ],
+        "beta": [
+          0.0,
+          15.0
+        ]
+      }
     },
     "RW+Decay": {
-      "mean": 0.7043358369229082,
-      "sd": 0.003296189719503148,
-      "hdi3": 0.699960912473317,
-      "hdi97": 0.7118197191532653
+      "status": "ok",
+      "eligible": true,
+      "heldout_nll_mean": 0.6569554748213836,
+      "heldout_nll_sd": 0.8610104278050913,
+      "heldout_nll_se": 0.010147105202888506,
+      "heldout_nll_q03": 0.01085452646777508,
+      "heldout_nll_q97": 3.0835042700247497,
+      "heldout_total_nll": 4730.079418713962,
+      "diagnostics": {
+        "pass": true,
+        "failures": [],
+        "divergences": 0,
+        "max_rhat": 1.0058524112921963,
+        "min_bulk_ess": 626.8419893533921,
+        "min_bfmi": 0.7705518971617967,
+        "checked_variables": [
+          "rl_alpha_Intercept",
+          "beta_1|participant_id_sigma",
+          "rl_decay_Intercept",
+          "beta_Intercept",
+          "rl_alpha_1|participant_id_sigma",
+          "rl_decay_1|participant_id_sigma"
+        ]
+      },
+      "population_parameters": {
+        "rl_alpha": {
+          "mean": 0.5767602684179917,
+          "sd": 0.0656976069001528,
+          "q03": 0.4473939199808136,
+          "q97": 0.6993662178942074
+        },
+        "rl_decay": {
+          "mean": 0.05268298499576437,
+          "sd": 0.011673855933623783,
+          "q03": 0.03334338705412159,
+          "q97": 0.0762112627137975
+        },
+        "beta": {
+          "mean": 14.245023018619854,
+          "sd": 0.19493241270054218,
+          "q03": 13.826224969879188,
+          "q97": 14.575576647335298
+        }
+      },
+      "parameter_bounds": {
+        "rl_alpha": [
+          0.0,
+          1.0
+        ],
+        "rl_decay": [
+          0.0,
+          0.15
+        ],
+        "beta": [
+          0.0,
+          15.0
+        ]
+      }
     },
     "DualAlpha": {
-      "mean": 0.6999229798488008,
-      "sd": 0.006206450281608835,
-      "hdi3": 0.6906827166629743,
-      "hdi97": 0.7063331504657486
+      "status": "ok",
+      "eligible": true,
+      "heldout_nll_mean": 0.6383257239801898,
+      "heldout_nll_sd": 0.8640554654563145,
+      "heldout_nll_se": 0.010182991315757645,
+      "heldout_nll_q03": 0.01712438196704266,
+      "heldout_nll_q97": 3.082759099908322,
+      "heldout_total_nll": 4595.945212657367,
+      "diagnostics": {
+        "pass": true,
+        "failures": [],
+        "divergences": 0,
+        "max_rhat": 1.0051844461482504,
+        "min_bulk_ess": 296.7166595337295,
+        "min_bfmi": 0.7935062703544842,
+        "checked_variables": [
+          "rl_alpha_pos_Intercept",
+          "beta_1|participant_id_sigma",
+          "rl_alpha_pos_1|participant_id_sigma",
+          "beta_Intercept",
+          "rl_alpha_neg_Intercept",
+          "rl_alpha_neg_1|participant_id_sigma"
+        ]
+      },
+      "population_parameters": {
+        "rl_alpha_pos": {
+          "mean": 0.5389910612195622,
+          "sd": 0.0650138834120981,
+          "q03": 0.4216553137773577,
+          "q97": 0.6639802837254379
+        },
+        "rl_alpha_neg": {
+          "mean": 0.35467651818059825,
+          "sd": 0.06909652224613945,
+          "q03": 0.2302277989802454,
+          "q97": 0.4905877400020479
+        },
+        "beta": {
+          "mean": 12.704608626662814,
+          "sd": 0.3652075767854754,
+          "q03": 11.989803646480485,
+          "q97": 13.37196459795224
+        }
+      },
+      "parameter_bounds": {
+        "rl_alpha_pos": [
+          0.0,
+          1.0
+        ],
+        "rl_alpha_neg": [
+          0.0,
+          1.0
+        ],
+        "beta": [
+          0.0,
+          15.0
+        ]
+      }
     },
     "DualAlpha+Decay": {
-      "mean": 0.7003597524066936,
-      "sd": 0.002325281132024713,
-      "hdi3": 0.6964785690310297,
-      "hdi97": 0.7041506360869781
+      "status": "ok",
+      "eligible": true,
+      "heldout_nll_mean": 0.6510336250142801,
+      "heldout_nll_sd": 0.855892332649537,
+      "heldout_nll_se": 0.010086787873034332,
+      "heldout_nll_q03": 0.01114317507312176,
+      "heldout_nll_q97": 3.0514584955649124,
+      "heldout_total_nll": 4687.442100102817,
+      "diagnostics": {
+        "pass": true,
+        "failures": [],
+        "divergences": 0,
+        "max_rhat": 1.0081963003372936,
+        "min_bulk_ess": 159.80530604505532,
+        "min_bfmi": 0.7649313356603955,
+        "checked_variables": [
+          "rl_alpha_pos_Intercept",
+          "beta_1|participant_id_sigma",
+          "rl_alpha_pos_1|participant_id_sigma",
+          "rl_decay_Intercept",
+          "beta_Intercept",
+          "rl_alpha_neg_Intercept",
+          "rl_decay_1|participant_id_sigma",
+          "rl_alpha_neg_1|participant_id_sigma"
+        ]
+      },
+      "population_parameters": {
+        "rl_alpha_pos": {
+          "mean": 0.6884356717314888,
+          "sd": 0.06311716457977909,
+          "q03": 0.564022203816461,
+          "q97": 0.7978975989772732
+        },
+        "rl_alpha_neg": {
+          "mean": 0.3693581409161496,
+          "sd": 0.08812394565784407,
+          "q03": 0.2058606283795224,
+          "q97": 0.5371598811509145
+        },
+        "rl_decay": {
+          "mean": 0.045317879251801245,
+          "sd": 0.010060991320358226,
+          "q03": 0.029008732471681786,
+          "q97": 0.0660093248866548
+        },
+        "beta": {
+          "mean": 13.947529566579012,
+          "sd": 0.30899835788377084,
+          "q03": 13.311450466892046,
+          "q97": 14.461598943460093
+        }
+      },
+      "parameter_bounds": {
+        "rl_alpha_pos": [
+          0.0,
+          1.0
+        ],
+        "rl_alpha_neg": [
+          0.0,
+          1.0
+        ],
+        "rl_decay": [
+          0.0,
+          0.15
+        ],
+        "beta": [
+          0.0,
+          15.0
+        ]
+      }
     },
     "Sticky": {
-      "mean": 0.6097432468777262,
-      "sd": 0.0019982374802358,
-      "hdi3": 0.6047706162448687,
-      "hdi97": 0.6129349641783685
+      "status": "ok",
+      "eligible": true,
+      "heldout_nll_mean": 0.5521356426089885,
+      "heldout_nll_sd": 0.8958203993188182,
+      "heldout_nll_se": 0.010557344651392953,
+      "heldout_nll_q03": 0.01614854902789471,
+      "heldout_nll_q97": 3.0970629724936223,
+      "heldout_total_nll": 3975.3766267847172,
+      "diagnostics": {
+        "pass": true,
+        "failures": [],
+        "divergences": 0,
+        "max_rhat": 1.0078355324777837,
+        "min_bulk_ess": 144.45909680359085,
+        "min_bfmi": 0.7806298275460003,
+        "checked_variables": [
+          "rl_alpha_pos_Intercept",
+          "beta_1|participant_id_sigma",
+          "rl_alpha_pos_1|participant_id_sigma",
+          "beta_Intercept",
+          "sticky_Intercept",
+          "rl_alpha_neg_Intercept",
+          "sticky_1|participant_id_sigma",
+          "rl_alpha_neg_1|participant_id_sigma"
+        ]
+      },
+      "population_parameters": {
+        "rl_alpha_pos": {
+          "mean": 0.4601845388248926,
+          "sd": 0.06824533323758607,
+          "q03": 0.3347066182586873,
+          "q97": 0.5913868841586774
+        },
+        "rl_alpha_neg": {
+          "mean": 0.40665479822654343,
+          "sd": 0.07590376369473521,
+          "q03": 0.273505789153865,
+          "q97": 0.5503736428259091
+        },
+        "sticky": {
+          "mean": 0.12400510634449985,
+          "sd": 0.02079627523214155,
+          "q03": 0.0869400859093938,
+          "q97": 0.16373160797533792
+        },
+        "beta": {
+          "mean": 9.710156502205734,
+          "sd": 0.4465199876922144,
+          "q03": 8.900316902159906,
+          "q97": 10.594237633165204
+        }
+      },
+      "parameter_bounds": {
+        "rl_alpha_pos": [
+          0.0,
+          1.0
+        ],
+        "rl_alpha_neg": [
+          0.0,
+          1.0
+        ],
+        "sticky": [
+          -3.0,
+          3.0
+        ],
+        "beta": [
+          0.0,
+          15.0
+        ]
+      }
     },
     "HGF": {
-      "mean": 0.7381716480032146,
-      "sd": 0.006408158510648998,
-      "hdi3": 0.7278327221966956,
-      "hdi97": 0.7527317846798561
+      "status": "ok",
+      "eligible": true,
+      "heldout_nll_mean": 0.6563057173699023,
+      "heldout_nll_sd": 0.9510459378672604,
+      "heldout_nll_se": 0.01120818386476433,
+      "heldout_nll_q03": 0.019318338342164728,
+      "heldout_nll_q97": 3.4298431548552255,
+      "heldout_total_nll": 4725.4011650632965,
+      "diagnostics": {
+        "pass": true,
+        "failures": [],
+        "divergences": 0,
+        "max_rhat": 1.0048389724897557,
+        "min_bulk_ess": 441.3505190123492,
+        "min_bfmi": 0.8810484394244699,
+        "checked_variables": [
+          "kappa_Intercept",
+          "beta_1|participant_id_sigma",
+          "omega_1|participant_id_sigma",
+          "beta_Intercept",
+          "omega_Intercept",
+          "kappa_1|participant_id_sigma"
+        ]
+      },
+      "population_parameters": {
+        "omega": {
+          "mean": -2.6230533844533857,
+          "sd": 0.5768507697460307,
+          "q03": -3.6692964630721416,
+          "q97": -1.537047388317948
+        },
+        "kappa": {
+          "mean": 0.2107975425151957,
+          "sd": 0.06559560510095021,
+          "q03": 0.0975938935969959,
+          "q97": 0.3549868965041526
+        },
+        "beta": {
+          "mean": 11.622614022633908,
+          "sd": 0.4690632327389165,
+          "q03": 10.72138506221824,
+          "q97": 12.433360572624954
+        }
+      },
+      "parameter_bounds": {
+        "omega": [
+          -8.0,
+          2.0
+        ],
+        "kappa": [
+          0.0,
+          4.0
+        ],
+        "beta": [
+          0.0,
+          15.0
+        ]
+      }
+    },
+    "HGF+Sticky": {
+      "status": "ok",
+      "eligible": true,
+      "heldout_nll_mean": 0.5624763883560779,
+      "heldout_nll_sd": 0.9502803289781621,
+      "heldout_nll_se": 0.01119916107747736,
+      "heldout_nll_q03": 0.020850296922181818,
+      "heldout_nll_q97": 3.342113209672425,
+      "heldout_total_nll": 4049.829996163761,
+      "diagnostics": {
+        "pass": true,
+        "failures": [],
+        "divergences": 0,
+        "max_rhat": 1.0070124148481474,
+        "min_bulk_ess": 327.7704697590672,
+        "min_bfmi": 0.7830761589828622,
+        "checked_variables": [
+          "kappa_Intercept",
+          "beta_1|participant_id_sigma",
+          "omega_1|participant_id_sigma",
+          "beta_Intercept",
+          "sticky_Intercept",
+          "omega_Intercept",
+          "sticky_1|participant_id_sigma",
+          "kappa_1|participant_id_sigma"
+        ]
+      },
+      "population_parameters": {
+        "omega": {
+          "mean": -1.7733559300022321,
+          "sd": 0.5591443856037298,
+          "q03": -2.7818216774108846,
+          "q97": -0.6919838284633558
+        },
+        "kappa": {
+          "mean": 0.27553495311964127,
+          "sd": 0.11453762854085918,
+          "q03": 0.11533464114985127,
+          "q97": 0.5347800439587985
+        },
+        "sticky": {
+          "mean": 0.1846880259106955,
+          "sd": 0.029070100131094283,
+          "q03": 0.1317280450214519,
+          "q97": 0.2381559017898597
+        },
+        "beta": {
+          "mean": 7.803457417419895,
+          "sd": 0.4179851735313068,
+          "q03": 7.027520427122592,
+          "q97": 8.61297095251846
+        }
+      },
+      "parameter_bounds": {
+        "omega": [
+          -8.0,
+          2.0
+        ],
+        "kappa": [
+          0.0,
+          4.0
+        ],
+        "sticky": [
+          -3.0,
+          3.0
+        ],
+        "beta": [
+          0.0,
+          15.0
+        ]
+      }
     }
   }
 }

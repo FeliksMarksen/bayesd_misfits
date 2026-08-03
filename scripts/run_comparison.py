@@ -1,70 +1,87 @@
-"""6-model comparison with all known issues fixed.
+"""Fit and compare seven N-arm bandit learning models.
 
-Fixes vs notebooks:
-  - β upper bound: 15 (was 10, saturating at 9.8)
-  - obs_precision: 20.0 everywhere (notebook 03 used 1.0)
-  - initial_sigma1: 0.25 in NLL eval (notebook 03 used 1.0)
-  - decay prior: constrained to [0, 0.15] (was [0, 1], fitting 0.22)
-  - sticky model: now included in comparison
+The comparison is deliberately deployment-oriented:
 
-Divergence/stability fixes (this revision):
-  - NLL via log-mean-exp over draws (posterior-predictive) across all six
-    nll_* functions; was a per-draw mean of -log p, which let a few outlier
-    high-β draws blow up to 1e6+. (This is the fix that makes the comparison
-    trustworthy.)
-  - target_accept=0.99 for HGF (was 0.95) — smaller steps for its tricky geometry.
-  - sampler diagnostics (divergences, max R-hat) saved per model.
-  - floatX kept at float32: a float64 trial broke the RW family (4000/4000
-    divergences) under numpyro default initvals, so it was reverted.
+* bounded parameters use a generalized-logit link, including random effects;
+* the training and validation sets contain disjoint human subjects;
+* validation uses population-level parameters, matching the fixed submitted agent;
+* the same learner implementations are used for fitting and one-step prediction;
+* a model is eligible only when population/hyperparameter convergence and
+  global HMC diagnostics pass.
 
-Usage:
-  cd bayesd_misfits
-  .venv/bin/python scripts/run_comparison.py          # quick (20 sub, 2 chains)
-  FULL_RUN=1 .venv/bin/python scripts/run_comparison.py  # production
+Usage
+-----
+Quick diagnostic run::
+
+    .venv/bin/python scripts/run_comparison.py
+
+Production run::
+
+    FULL_RUN=1 .venv/bin/python scripts/run_comparison.py
+
+The sample sizes and sampler can also be overridden with ``N_TRAIN``,
+``N_VALID``, ``N_TUNE``, ``N_DRAWS``, ``N_CHAINS``, ``N_NLL_DRAWS``, and
+``SAMPLER`` environment variables.
 """
+
+from __future__ import annotations
 
 import json
 import logging
 import os
 import sys
 import warnings
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
+
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/bayesd_misfits-matplotlib")
+os.environ.setdefault(
+    "PYTENSOR_FLAGS", "base_compiledir=/tmp/bayesd_misfits-pytensor"
+)
 
 import arviz as az
+import hssm
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pandas as pd
-from scipy.special import logsumexp
-
-import hssm
+from scipy.special import expit, logsumexp, logit
 from ssms.rl import ModelConfig
 from ssms.rl.env import Bandit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from bayesd_misfits.data import ensure_data_downloaded, load_challenge_data
+from bayesd_misfits.hgf import NArmHGF, NArmHGFSticky
 from bayesd_misfits.model import (
-    NArmRescorlaWagner, NArmDualAlphaRW, NArmRWDualAlphaSticky,
+    NArmDualAlphaRW,
+    NArmRescorlaWagner,
+    NArmRWDualAlphaSticky,
 )
-from bayesd_misfits.hgf import NArmHGF
 
 warnings.filterwarnings("ignore")
 logging.getLogger("jax._src.xla_bridge").setLevel("ERROR")
-# float32 (NOT float64): an earlier attempt used float64 to stabilize HGF, but it
-# catastrophically broke the RW-family geometry (4000/4000 divergences, R-hat 3.66)
-# under numpyro's default initvals. float32 was the setting that produced sensible
-# RW/DualAlpha fits, so we keep it. HGF stability is handled instead via its tighter
-# target_accept (0.99) and the outlier-robust log-mean-exp NLL.
-hssm.set_floatX("float32", update_jax=True)
+
+FLOATX = "float32"
+hssm.set_floatX(FLOATX, update_jax=True)
 
 SEED = 20260719
 FULL_RUN = os.environ.get("FULL_RUN", "0") == "1"
-N_SUB = 50 if FULL_RUN else 30
 N_TRIALS = 120
-N_CHAINS = 4 if FULL_RUN else 2
-N_TUNE = 1000 if FULL_RUN else 500
-N_DRAWS = 1000 if FULL_RUN else 500
-N_NLL_DRAWS = 200 if FULL_RUN else 100
+N_TRAIN = int(os.environ.get("N_TRAIN", 100 if FULL_RUN else 20))
+N_VALID = int(os.environ.get("N_VALID", 300 if FULL_RUN else 60))
+N_CHAINS = int(os.environ.get("N_CHAINS", 4 if FULL_RUN else 2))
+N_TUNE = int(os.environ.get("N_TUNE", 1000 if FULL_RUN else 500))
+N_DRAWS = int(os.environ.get("N_DRAWS", 1000 if FULL_RUN else 500))
+N_NLL_DRAWS = int(os.environ.get("N_NLL_DRAWS", 500 if FULL_RUN else 200))
+SAMPLER = os.environ.get("SAMPLER", "numpyro")
 
-# HGF constants — MUST be consistent between fitting and evaluation
+MAX_RHAT = 1.01
+MIN_BFMI = 0.30
+MIN_BULK_ESS = max(100, N_CHAINS * N_DRAWS // 10)
+
+# HGF constants shared by fitting and evaluation.
 OBS_PRECISION = 20.0
 INITIAL_SIGMA1 = 0.25
 INITIAL_SIGMA2 = 1.0
@@ -72,432 +89,602 @@ INITIAL_MU1 = 0.5
 INITIAL_MU2 = -1.0
 THETA_VAR = 0.01
 
-PE_PRIOR = {"name": "Normal", "mu": 0,
-            "sigma": {"name": "HalfNormal", "sigma": 0.5}}
+# Natural-scale prior targets: lower, upper, mean, SD, participant RE SD.
+PRIOR_SPECS: dict[str, tuple[float, float, float, float, float]] = {
+    "rl_alpha": (0.0, 1.0, 0.30, 0.15, 0.05),
+    "rl_alpha_pos": (0.0, 1.0, 0.30, 0.15, 0.05),
+    "rl_alpha_neg": (0.0, 1.0, 0.30, 0.15, 0.05),
+    "rl_decay": (0.0, 0.15, 0.03, 0.03, 0.01),
+    "sticky": (-3.0, 3.0, 0.0, 0.50, 0.10),
+    "omega": (-8.0, 2.0, -2.0, 1.00, 0.50),
+    "kappa": (0.0, 4.0, 1.0, 0.50, 0.10),
+    "beta": (0.0, 15.0, 5.0, 2.00, 0.50),
+}
 
 
-def hp(name, lo, hi, mu, sig, re_sig=0.05):
-    """Hierarchical param: group intercept + per-participant random effect."""
+def _env_int(name: str, value: int) -> int:
+    if value <= 0:
+        raise ValueError(f"{name} must be positive, got {value}")
+    return value
+
+
+for _name, _value in {
+    "N_TRAIN": N_TRAIN,
+    "N_VALID": N_VALID,
+    "N_CHAINS": N_CHAINS,
+    "N_TUNE": N_TUNE,
+    "N_DRAWS": N_DRAWS,
+    "N_NLL_DRAWS": N_NLL_DRAWS,
+}.items():
+    _env_int(_name, _value)
+
+
+def inverse_gen_logit(value: Any, bounds: tuple[float, float]) -> Any:
+    """Map an unconstrained regression coefficient to its natural bounds."""
+    lower, upper = bounds
+    return lower + (upper - lower) * expit(value)
+
+
+def hierarchical_param(name: str) -> hssm.Param:
+    """Create a bounded hierarchy with priors expressed on link scale.
+
+    The prior targets in ``PRIOR_SPECS`` are intuitive natural-scale values.
+    A delta-method conversion puts both the intercept and random-effect scale
+    on the generalized-logit linear-predictor scale used by Bambi/HSSM.
+    """
+    lower, upper, mean, sd, re_sd = PRIOR_SPECS[name]
+    proportion = np.clip((mean - lower) / (upper - lower), 1e-6, 1.0 - 1e-6)
+    eta_mean = float(logit(proportion))
+    derivative = (upper - lower) * proportion * (1.0 - proportion)
+    eta_sd = float(sd / derivative)
+    eta_re_sd = float(re_sd / derivative)
+
     return hssm.Param(
-        name, formula=f"{name} ~ 1 + (1|participant_id)",
+        name,
+        formula=f"{name} ~ 1 + (1|participant_id)",
+        bounds=(lower, upper),
+        link="log_logit",
         prior={
-            "Intercept": hssm.Prior("TruncatedNormal", lower=lo, upper=hi,
-                                    mu=mu, sigma=sig),
-            "1|participant_id": {"name": "Normal", "mu": 0,
-                                 "sigma": {"name": "HalfNormal", "sigma": re_sig}},
+            "Intercept": hssm.Prior("Normal", mu=eta_mean, sigma=eta_sd),
+            "1|participant_id": {
+                "name": "Normal",
+                "mu": 0.0,
+                "sigma": {"name": "HalfNormal", "sigma": eta_re_sd},
+            },
         },
     )
 
 
-def load_data():
+def load_split_data() -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+    """Load complete trajectories and split them by human subject."""
     ensure_data_downloaded()
     df = load_challenge_data(
-        feedback_transform="normalize", rt_placeholder=-1.0,
+        feedback_transform="normalize",
+        rt_placeholder=-1.0,
         group_by="trajectory",
     )
-    tc = df.groupby("participant_id").size()
-    df = df[df["participant_id"].isin(tc[tc == N_TRIALS].index)].reset_index(drop=True)
+    trial_counts = df.groupby("participant_id").size()
+    complete_ids = trial_counts[trial_counts == N_TRIALS].index
+    df = df[df["participant_id"].isin(complete_ids)].copy()
+
     rng = np.random.default_rng(SEED)
-    pids = sorted(df["participant_id"].unique())
-    sel = rng.choice(pids, size=min(N_SUB, len(pids)), replace=False)
-    df = df[df["participant_id"].isin(sel)].sort_values(
-        ["participant_id", "trial_id"]).reset_index(drop=True)
-    pid_map = {p: i for i, p in enumerate(sorted(df["participant_id"].unique()))}
-    df["participant_id"] = df["participant_id"].map(pid_map)
-    data = df[["participant_id", "trial_id", "response", "feedback"]].copy()
-    print(f"Data: {data['participant_id'].nunique()} sub × {N_TRIALS} trials"
-          f" = {len(data)} rows")
-    return data
+    subjects = np.asarray(sorted(df["subject_id"].unique()))
+    rng.shuffle(subjects)
+    split_at = max(1, int(0.70 * len(subjects)))
+    train_subjects = set(subjects[:split_at])
+    valid_subjects = set(subjects[split_at:])
 
+    train_pool = np.asarray(sorted(
+        df.loc[df["subject_id"].isin(train_subjects), "participant_id"].unique()
+    ))
+    valid_pool = np.asarray(sorted(
+        df.loc[df["subject_id"].isin(valid_subjects), "participant_id"].unique()
+    ))
+    if len(train_pool) < N_TRAIN or len(valid_pool) < N_VALID:
+        raise ValueError(
+            "Requested split is larger than the available complete trajectories: "
+            f"train {N_TRAIN}/{len(train_pool)}, validation {N_VALID}/{len(valid_pool)}"
+        )
 
-def draw_theta(idata, params, n_sub, idx):
-    post = idata.posterior
-    if hasattr(post, "to_dataset"):
-        post = post.to_dataset()
-    post = post.stack(sample=("chain", "draw"))
-    theta = {}
-    for name in params:
-        re = post[f"{name}_1|participant_id"]
-        dim = [d for d in re.dims if d != "sample"][0]
-        vals = (post[f"{name}_Intercept"] + re).isel(sample=idx)
-        ids = [int(v) for v in re[dim].values]
-        theta[name] = (pd.Series(np.asarray(vals.values), index=ids)
-                       .sort_index().reindex(range(n_sub)).to_numpy())
-    return theta
+    train_ids = rng.choice(train_pool, size=N_TRAIN, replace=False)
+    valid_ids = rng.choice(valid_pool, size=N_VALID, replace=False)
 
+    def select(ids: np.ndarray) -> pd.DataFrame:
+        selected = df[df["participant_id"].isin(ids)].copy()
+        id_map = {
+            old: new
+            for new, old in enumerate(sorted(selected["participant_id"].unique()))
+        }
+        selected["participant_id"] = selected["participant_id"].map(id_map)
+        selected = selected.sort_values(["participant_id", "trial_id"])
+        return selected[
+            ["participant_id", "trial_id", "response", "feedback"]
+        ].reset_index(drop=True)
 
-# ── NLL functions ──
-
-
-def nll_rw(idata, data, n_sub):
-    """One-step-ahead posterior-predictive NLL for RW (single alpha).
-
-    Returns log-mean-exp NLL across posterior draws: NLL_t = -log(mean_d p_d).
-    Averaging probabilities before the log prevents a single high-β draw that
-    mispredicts from inflating the mean (the cause of earlier 1e6+ blow-ups).
-    """
-    post = idata.posterior
-    if hasattr(post, "to_dataset"):
-        post = post.to_dataset()
-    post = post.stack(sample=("chain", "draw"))
-    didx = np.random.default_rng(42).choice(
-        post.sizes["sample"], min(N_NLL_DRAWS, post.sizes["sample"]),
-        replace=False)
-    logps = []
-    for d in didx:
-        th = draw_theta(idata, ["rl_alpha", "beta"], n_sub, int(d))
-        for pid in range(n_sub):
-            a, b = th["rl_alpha"][pid], th["beta"][pid]
-            Q = np.full(4, 0.5)
-            for _, r in data[data["participant_id"] == pid].sort_values("trial_id").iterrows():
-                act, rew = int(r["response"]), float(r["feedback"])
-                lg = b * Q
-                logps.append(lg[act] - logsumexp(lg))      # log p(chosen)
-                Q[act] += a * (rew - Q[act])
-    lp = np.array(logps).reshape(len(didx), -1)            # (n_draws, n_trials)
-    return -logsumexp(lp, axis=0) + np.log(lp.shape[0])    # log-mean-exp → NLL
-
-
-def nll_rw_decay(idata, data, n_sub):
-    """One-step-ahead posterior-predictive NLL for RW + decay (log-mean-exp)."""
-    post = idata.posterior
-    if hasattr(post, "to_dataset"):
-        post = post.to_dataset()
-    post = post.stack(sample=("chain", "draw"))
-    didx = np.random.default_rng(42).choice(
-        post.sizes["sample"], min(N_NLL_DRAWS, post.sizes["sample"]),
-        replace=False)
-    logps = []
-    for d in didx:
-        th = draw_theta(idata, ["rl_alpha", "rl_decay", "beta"], n_sub, int(d))
-        for pid in range(n_sub):
-            a, dc, b = th["rl_alpha"][pid], th["rl_decay"][pid], th["beta"][pid]
-            Q = np.full(4, 0.5)
-            for _, r in data[data["participant_id"] == pid].sort_values("trial_id").iterrows():
-                act, rew = int(r["response"]), float(r["feedback"])
-                lg = b * Q
-                logps.append(lg[act] - logsumexp(lg))
-                Q = (1.0 - dc) * Q + dc * 0.5
-                Q[act] += a * (rew - Q[act])
-    lp = np.array(logps).reshape(len(didx), -1)
-    return -logsumexp(lp, axis=0) + np.log(lp.shape[0])
-
-
-def nll_dual_alpha(idata, data, n_sub):
-    """One-step-ahead posterior-predictive NLL for dual-alpha RW (log-mean-exp)."""
-    post = idata.posterior
-    if hasattr(post, "to_dataset"):
-        post = post.to_dataset()
-    post = post.stack(sample=("chain", "draw"))
-    didx = np.random.default_rng(42).choice(
-        post.sizes["sample"], min(N_NLL_DRAWS, post.sizes["sample"]),
-        replace=False)
-    logps = []
-    for d in didx:
-        th = draw_theta(idata, ["rl_alpha_pos", "rl_alpha_neg", "beta"],
-                        n_sub, int(d))
-        for pid in range(n_sub):
-            ap, an, b = (th["rl_alpha_pos"][pid], th["rl_alpha_neg"][pid],
-                         th["beta"][pid])
-            Q = np.full(4, 0.5)
-            for _, r in data[data["participant_id"] == pid].sort_values("trial_id").iterrows():
-                act, rew = int(r["response"]), float(r["feedback"])
-                lg = b * Q
-                logps.append(lg[act] - logsumexp(lg))
-                pe = rew - Q[act]
-                Q[act] += (ap if pe >= 0 else an) * pe
-    lp = np.array(logps).reshape(len(didx), -1)
-    return -logsumexp(lp, axis=0) + np.log(lp.shape[0])
-
-
-def nll_dual_alpha_decay(idata, data, n_sub):
-    """One-step-ahead posterior-predictive NLL for dual-alpha RW + decay (log-mean-exp)."""
-    post = idata.posterior
-    if hasattr(post, "to_dataset"):
-        post = post.to_dataset()
-    post = post.stack(sample=("chain", "draw"))
-    didx = np.random.default_rng(42).choice(
-        post.sizes["sample"], min(N_NLL_DRAWS, post.sizes["sample"]),
-        replace=False)
-    logps = []
-    for d in didx:
-        th = draw_theta(idata,
-                        ["rl_alpha_pos", "rl_alpha_neg", "rl_decay", "beta"],
-                        n_sub, int(d))
-        for pid in range(n_sub):
-            ap, an = th["rl_alpha_pos"][pid], th["rl_alpha_neg"][pid]
-            dc, b = th["rl_decay"][pid], th["beta"][pid]
-            Q = np.full(4, 0.5)
-            for _, r in data[data["participant_id"] == pid].sort_values("trial_id").iterrows():
-                act, rew = int(r["response"]), float(r["feedback"])
-                lg = b * Q
-                logps.append(lg[act] - logsumexp(lg))
-                Q = (1.0 - dc) * Q + dc * 0.5
-                pe = rew - Q[act]
-                Q[act] += (ap if pe >= 0 else an) * pe
-    lp = np.array(logps).reshape(len(didx), -1)
-    return -logsumexp(lp, axis=0) + np.log(lp.shape[0])
-
-
-def nll_sticky(idata, data, n_sub):
-    """One-step-ahead posterior-predictive NLL for dual-alpha + sticky (log-mean-exp)."""
-    post = idata.posterior
-    if hasattr(post, "to_dataset"):
-        post = post.to_dataset()
-    post = post.stack(sample=("chain", "draw"))
-    didx = np.random.default_rng(42).choice(
-        post.sizes["sample"], min(N_NLL_DRAWS, post.sizes["sample"]),
-        replace=False)
-    logps = []
-    for d in didx:
-        th = draw_theta(idata,
-                        ["rl_alpha_pos", "rl_alpha_neg", "sticky", "beta"],
-                        n_sub, int(d))
-        for pid in range(n_sub):
-            ap, an = th["rl_alpha_pos"][pid], th["rl_alpha_neg"][pid]
-            st, b = th["sticky"][pid], th["beta"][pid]
-            Q = np.full(4, 0.5)
-            last = -1
-            for _, r in data[data["participant_id"] == pid].sort_values("trial_id").iterrows():
-                act, rew = int(r["response"]), float(r["feedback"])
-                q_eff = Q.copy()
-                if last >= 0:
-                    q_eff[last] += st
-                lg = b * q_eff
-                logps.append(lg[act] - logsumexp(lg))
-                pe = rew - Q[act]
-                Q[act] += (ap if pe >= 0 else an) * pe
-                last = act
-    lp = np.array(logps).reshape(len(didx), -1)
-    return -logsumexp(lp, axis=0) + np.log(lp.shape[0])
-
-
-def nll_hgf(idata, data, n_sub):
-    """One-step-ahead posterior-predictive NLL for HGF (log-mean-exp).
-
-    Uses correct obs_precision & initial_sigma1.
-    """
-    post = idata.posterior
-    if hasattr(post, "to_dataset"):
-        post = post.to_dataset()
-    post = post.stack(sample=("chain", "draw"))
-    didx = np.random.default_rng(42).choice(
-        post.sizes["sample"], min(N_NLL_DRAWS, post.sizes["sample"]),
-        replace=False)
-    logps = []
-    for d in didx:
-        th = draw_theta(idata, ["omega", "kappa", "beta"], n_sub, int(d))
-        for pid in range(n_sub):
-            om, ka, be = th["omega"][pid], th["kappa"][pid], th["beta"][pid]
-            mu1 = np.full(4, INITIAL_MU1)
-            s1 = np.full(4, INITIAL_SIGMA1)
-            mu2 = np.full(4, INITIAL_MU2)
-            s2 = np.full(4, INITIAL_SIGMA2)
-            for _, r in data[data["participant_id"] == pid].sort_values("trial_id").iterrows():
-                act, rew = int(r["response"]), float(r["feedback"])
-                # Prediction (all arms)
-                mu1h = mu1.copy()
-                s1h = s1 + np.exp(ka * mu2 + om)
-                s2h = s2 + THETA_VAR
-                # Choice prediction
-                lg = be * mu1h
-                logps.append(lg[act] - logsumexp(lg))
-                # Level 1 update (chosen arm)
-                pi1 = 1.0 / s1h[act] + OBS_PRECISION
-                psi1 = OBS_PRECISION / pi1
-                mu1[act] = mu1h[act] + psi1 * (rew - mu1h[act])
-                s1[act] = 1.0 / pi1
-                # Level 2 update (chosen arm)
-                pi1h_val = 1.0 / s1h[act]
-                pe = mu1[act] - mu1h[act]
-                d1 = (pi1h_val / pi1) + pi1h_val * pe ** 2 - 1.0
-                pi2 = 1.0 / s2h[act] + 0.5 * (ka * pi1h_val) ** 2
-                psi2 = 0.5 * ka * pi1h_val / pi2
-                mu2[act] = mu2[act] + psi2 * d1
-                s2[act] = 1.0 / pi2
-                # Unchosen: carry forward predicted uncertainty
-                for a2 in range(4):
-                    if a2 != act:
-                        s1[a2] = s1h[a2]
-                        s2[a2] = s2h[a2]
-    lp = np.array(logps).reshape(len(didx), -1)
-    return -logsumexp(lp, axis=0) + np.log(lp.shape[0])
-
-
-# ── Model definitions ──
-
-
-def build_models(data):
-    env = Bandit.bernoulli(probabilities=[0.25] * 4,
-                           response_labels=[0, 1, 2, 3])
-
-    # β prior: upper=15 (was 10, saturating at 9.8). re_sig=0.5 (beta values can vary more)
-    beta_param = hp("beta", 0, 15, 5, 2, re_sig=0.5)
-
-    # Decay prior: upper=0.15 (was 1.0). re_sig=0.01 (tight to prevent going below 0 or above 0.15)
-    decay_param = hp("rl_decay", 0, 0.15, 0.03, 0.03, re_sig=0.01)
-
-    models = {}
-
-    # 1. RW
-    models["RW"] = {
-        "config": ModelConfig("4AB_RW", "RW", "inv_temp_softmax_4",
-                              NArmRescorlaWagner(4), env, response=["response"]),
-        "include": [hp("rl_alpha", 0, 1, 0.3, 0.15, re_sig=0.05), beta_param],
-        "nll_fn": nll_rw,
+    train_data = select(train_ids)
+    valid_data = select(valid_ids)
+    split_info = {
+        "available_complete_trajectories": int(len(complete_ids)),
+        "available_subjects": int(len(subjects)),
+        "train_trajectories": int(train_data["participant_id"].nunique()),
+        "validation_trajectories": int(valid_data["participant_id"].nunique()),
+        "train_rows": int(len(train_data)),
+        "validation_rows": int(len(valid_data)),
+        "subject_overlap": 0,
     }
+    print(
+        f"Training: {split_info['train_trajectories']} trajectories × {N_TRIALS} trials; "
+        f"validation: {split_info['validation_trajectories']} × {N_TRIALS}; "
+        "human subjects are disjoint."
+    )
+    return train_data, valid_data, split_info
 
-    # 2. RW + Decay
-    models["RW+Decay"] = {
-        "config": ModelConfig("4AB_RW_D", "RW+decay", "inv_temp_softmax_4",
-                              NArmRescorlaWagner(4, use_decay=True), env,
-                              response=["response"]),
-        "include": [hp("rl_alpha", 0, 1, 0.3, 0.15, re_sig=0.05), decay_param, beta_param],
-        "nll_fn": nll_rw_decay,
-    }
 
-    # 3. DualAlpha
-    models["DualAlpha"] = {
-        "config": ModelConfig("4AB_DA", "DualAlpha", "inv_temp_softmax_4",
-                              NArmDualAlphaRW(4), env, response=["response"]),
-        "include": [hp("rl_alpha_pos", 0, 1, 0.3, 0.15, re_sig=0.05),
-                    hp("rl_alpha_neg", 0, 1, 0.3, 0.15, re_sig=0.05), beta_param],
-        "nll_fn": nll_dual_alpha,
-    }
+def _make_config(
+    description: str,
+    learner: Any,
+    env: Bandit,
+    params: list[str],
+) -> ModelConfig:
+    config = ModelConfig(
+        "inv_temp_softmax_4",
+        description,
+        "inv_temp_softmax_4",
+        learner,
+        env,
+        response=["response"],
+    )
+    config.bounds.update({name: PRIOR_SPECS[name][:2] for name in params})
+    config.params_default = [PRIOR_SPECS[name][2] for name in config.list_params]
+    config.validate()
+    return config
 
-    # 4. DualAlpha + Decay
-    models["DualAlpha+Decay"] = {
-        "config": ModelConfig("4AB_DA_D", "DualAlpha+decay",
-                              "inv_temp_softmax_4",
-                              NArmDualAlphaRW(4, use_decay=True), env,
-                              response=["response"]),
-        "include": [hp("rl_alpha_pos", 0, 1, 0.3, 0.15, re_sig=0.05),
-                    hp("rl_alpha_neg", 0, 1, 0.3, 0.15, re_sig=0.05), decay_param,
-                    beta_param],
-        "nll_fn": nll_dual_alpha_decay,
-    }
 
-    # 5. DualAlpha + Sticky
-    models["Sticky"] = {
-        "config": ModelConfig("4AB_Sticky", "DualAlpha+sticky",
-                              "inv_temp_softmax_4",
-                              NArmRWDualAlphaSticky(4), env,
-                              response=["response"]),
-        "include": [hp("rl_alpha_pos", 0, 1, 0.3, 0.15, re_sig=0.05),
-                    hp("rl_alpha_neg", 0, 1, 0.3, 0.15, re_sig=0.05),
-                    hp("sticky", -3, 3, 0, 0.5, re_sig=0.1), beta_param],
-        "nll_fn": nll_sticky,
-    }
+def build_models() -> dict[str, dict[str, Any]]:
+    """Build matched model specifications with explicit, verified bounds."""
+    env = Bandit.bernoulli(
+        probabilities=[0.25] * 4,
+        response_labels=[0, 1, 2, 3],
+    )
 
-    # 6. HGF (obs_precision=20.0, NOT 1.0)
-    models["HGF"] = {
-        "config": ModelConfig("4AB_HGF", "HGF", "inv_temp_softmax_4",
-                              NArmHGF(4, obs_precision=OBS_PRECISION), env,
-                              response=["response"]),
-        "include": [hp("omega", -8, 2, -2, 1, re_sig=0.5),
-                    hp("kappa", 0, 4, 1, 0.5, re_sig=0.1), beta_param],
-        "nll_fn": nll_hgf,
-    }
+    definitions: list[tuple[str, str, Callable[[], Any], list[str]]] = [
+        (
+            "RW",
+            "RW",
+            lambda: NArmRescorlaWagner(4),
+            ["rl_alpha", "beta"],
+        ),
+        (
+            "RW+Decay",
+            "RW+decay",
+            lambda: NArmRescorlaWagner(4, use_decay=True),
+            ["rl_alpha", "rl_decay", "beta"],
+        ),
+        (
+            "DualAlpha",
+            "DualAlpha",
+            lambda: NArmDualAlphaRW(4),
+            ["rl_alpha_pos", "rl_alpha_neg", "beta"],
+        ),
+        (
+            "DualAlpha+Decay",
+            "DualAlpha+decay",
+            lambda: NArmDualAlphaRW(4, use_decay=True),
+            ["rl_alpha_pos", "rl_alpha_neg", "rl_decay", "beta"],
+        ),
+        (
+            "Sticky",
+            "DualAlpha+sticky",
+            lambda: NArmRWDualAlphaSticky(4),
+            ["rl_alpha_pos", "rl_alpha_neg", "sticky", "beta"],
+        ),
+        (
+            "HGF",
+            "uHGF",
+            lambda: NArmHGF(
+                4,
+                initial_mu1=INITIAL_MU1,
+                initial_mu2=INITIAL_MU2,
+                initial_sigma1=INITIAL_SIGMA1,
+                initial_sigma2=INITIAL_SIGMA2,
+                theta_var=THETA_VAR,
+                obs_precision=OBS_PRECISION,
+            ),
+            ["omega", "kappa", "beta"],
+        ),
+        (
+            "HGF+Sticky",
+            "uHGF+sticky",
+            lambda: NArmHGFSticky(
+                4,
+                initial_mu1=INITIAL_MU1,
+                initial_mu2=INITIAL_MU2,
+                initial_sigma1=INITIAL_SIGMA1,
+                initial_sigma2=INITIAL_SIGMA2,
+                theta_var=THETA_VAR,
+                obs_precision=OBS_PRECISION,
+            ),
+            ["omega", "kappa", "sticky", "beta"],
+        ),
+    ]
 
-    for m in models.values():
-        m["config"].validate()
-
+    models: dict[str, dict[str, Any]] = {}
+    for name, description, factory, params in definitions:
+        learner = factory()
+        config = _make_config(description, learner, env, params)
+        actual_bounds = {param: tuple(config.bounds[param]) for param in params}
+        requested_bounds = {param: PRIOR_SPECS[param][:2] for param in params}
+        if actual_bounds != requested_bounds:
+            raise RuntimeError(
+                f"Bound mismatch for {name}: {actual_bounds} != {requested_bounds}"
+            )
+        models[name] = {
+            "config": config,
+            "params": params,
+            "bounds": actual_bounds,
+            "learner_factory": factory,
+            "include": [hierarchical_param(param) for param in params],
+        }
     return models
 
 
-def main():
-    print(f"{'='*60}")
-    print(f"6-Model Comparison (FULL_RUN={FULL_RUN})")
-    print(f"  sub={N_SUB} trials={N_TRIALS} chains={N_CHAINS}"
-          f" tune={N_TUNE} draws={N_DRAWS}")
-    print(f"  β prior: TruncatedNormal(0, 15, mu=5, sigma=2)")
-    print(f"  decay prior: TruncatedNormal(0, 0.15, mu=0.03, sigma=0.03)")
-    print(f"  HGF obs_precision: {OBS_PRECISION}")
-    print(f"{'='*60}\n")
+def _stack_posterior(idata: Any) -> Any:
+    posterior = idata.posterior
+    if hasattr(posterior, "to_dataset"):
+        posterior = posterior.to_dataset()
+    return posterior.stack(sample=("chain", "draw"))
 
-    data = load_data()
-    n_sub = data["participant_id"].nunique()
-    models = build_models(data)
 
-    idatas = {}
-    diagnostics = {}  # per-model sampler diagnostics (divergences, R-hat)
-    for name, spec in models.items():
-        print(f"\n{'='*60}")
-        print(f"Fitting {name}...")
-        mc = hssm.rl.RLSSMConfig.from_ssms_model(spec["config"])
-        model = hssm.RLSSM(
-            data=data, model_config=mc,
-            p_outlier=0, lapse=None, process_initvals=False,
-            include=spec["include"],
+def population_draw(
+    posterior: Any,
+    params: list[str],
+    bounds: dict[str, tuple[float, float]],
+    draw_index: int,
+) -> dict[str, float]:
+    """Extract one fixed/population draw on each parameter's natural scale."""
+    result: dict[str, float] = {}
+    for name in params:
+        eta = float(
+            np.asarray(
+                posterior[f"{name}_Intercept"].isel(sample=draw_index).values
+            ).squeeze()
         )
-        # HGF has the trickiest geometry (precision/exp updates): take smaller
-        # steps (target_accept=0.99) to avoid divergences.
-        ta = 0.99 if name == "HGF" else 0.95
-        idata = model.sample(
-            sampler="numpyro", draws=N_DRAWS, tune=N_TUNE,
-            chains=N_CHAINS, cores=1, target_accept=ta,
-            random_seed=SEED,
-            idata_kwargs={"log_likelihood": False},
-        )
-        idatas[name] = idata
-        div = int(idata.sample_stats["diverging"].sum())
-        rh = max(float(az.rhat(idata)[v].max())
-                 for v in az.rhat(idata).data_vars)
-        diagnostics[name] = {"divergences": div, "max_rhat": rh}
-        print(f"  divergences={div}, max R-hat={rh:.3f}")
+        result[name] = float(inverse_gen_logit(eta, bounds[name]))
+    return result
 
-    # NLL evaluation
-    print(f"\n{'='*60}")
-    print("One-step-ahead NLL per trial (lower = better)")
-    print(f"{'='*60}")
-    results = {}
-    for name, spec in models.items():
-        nll = spec["nll_fn"](idatas[name], data, n_sub)
-        results[name] = {
-            "mean": float(nll.mean()),
-            "sd": float(nll.std()),
-            "hdi3": float(np.quantile(nll, 0.03)),
-            "hdi97": float(np.quantile(nll, 0.97)),
-            "divergences": diagnostics[name]["divergences"],
-            "max_rhat": diagnostics[name]["max_rhat"],
+
+def heldout_population_nll(
+    idata: Any,
+    data: pd.DataFrame,
+    spec: dict[str, Any],
+) -> np.ndarray:
+    """Compute held-out one-step NLL using fixed population parameters only."""
+    posterior = _stack_posterior(idata)
+    rng = np.random.default_rng(SEED + 1)
+    draw_indices = rng.choice(
+        posterior.sizes["sample"],
+        size=min(N_NLL_DRAWS, posterior.sizes["sample"]),
+        replace=False,
+    )
+    trajectories = [
+        trajectory.sort_values("trial_id")
+        for _, trajectory in data.groupby("participant_id", sort=True)
+    ]
+    choices = jnp.asarray(
+        np.stack([trajectory["response"].to_numpy() for trajectory in trajectories]),
+        dtype=jnp.int32,
+    )
+    feedback = jnp.asarray(
+        np.stack([trajectory["feedback"].to_numpy() for trajectory in trajectories])
+    )
+    theta_draws = [
+        population_draw(posterior, spec["params"], spec["bounds"], int(index))
+        for index in draw_indices
+    ]
+    batched_theta = {
+        name: jnp.asarray([theta[name] for theta in theta_draws])
+        for name in spec["params"]
+    }
+    learner = spec["learner_factory"]()
+
+    def score_draw(theta):
+        def score_trajectory(trajectory_choices, trajectory_feedback):
+            def score_trial(state, observation):
+                choice, reward = observation
+                computed = learner.compute_jax(state, theta, context={})
+                values = jnp.stack([computed[f"q{i}"] for i in range(4)])
+                log_probability = jax.nn.log_softmax(theta["beta"] * values)[choice]
+                updated_state = learner.update_jax(
+                    state,
+                    theta,
+                    context={"choice": choice, "feedback": reward},
+                )
+                return updated_state, log_probability
+
+            _, log_probabilities = jax.lax.scan(
+                score_trial,
+                learner.init_jax_state(),
+                (trajectory_choices, trajectory_feedback),
+            )
+            return log_probabilities
+
+        return jax.vmap(score_trajectory)(choices, feedback)
+
+    log_probs = np.asarray(jax.jit(jax.vmap(score_draw))(batched_theta))
+    log_probs = log_probs.reshape(log_probs.shape[0], -1)
+    return -logsumexp(log_probs, axis=0) + np.log(log_probs.shape[0])
+
+
+def population_parameter_summary(
+    idata: Any,
+    params: list[str],
+    bounds: dict[str, tuple[float, float]],
+) -> dict[str, dict[str, float]]:
+    """Summarize group intercepts after converting them to natural scale."""
+    posterior = _stack_posterior(idata)
+    result: dict[str, dict[str, float]] = {}
+    for name in params:
+        eta = np.asarray(posterior[f"{name}_Intercept"].values, dtype=float)
+        natural = np.asarray(inverse_gen_logit(eta, bounds[name]), dtype=float)
+        result[name] = {
+            "mean": float(np.mean(natural)),
+            "sd": float(np.std(natural, ddof=1)),
+            "q03": float(np.quantile(natural, 0.03)),
+            "q97": float(np.quantile(natural, 0.97)),
         }
+    return result
 
-    print(f"\n{'Model':<20} {'Mean':>8} {'SD':>8} {'94% HDI':>22}")
-    print(f"{'─'*20} {'─'*8} {'─'*8} {'─'*22}")
-    for name in models:
-        r = results[name]
-        print(f"{name:<20} {r['mean']:>8.4f} {r['sd']:>8.4f} "
-              f"[{r['hdi3']:.4f}, {r['hdi97']:.4f}]")
-    print(f"{'Uniform random':<20} {np.log(4):>8.4f}")
 
-    best = min(results, key=lambda k: results[k]["mean"])
-    print(f"\nBest model: {best} (NLL = {results[best]['mean']:.4f})")
+def sampler_diagnostics(idata: Any) -> dict[str, Any]:
+    """Return population-level convergence checks and global HMC checks."""
+    posterior = idata.posterior
+    if hasattr(posterior, "to_dataset"):
+        posterior = posterior.to_dataset()
+    variables = [
+        name
+        for name in posterior.data_vars
+        if name.endswith("_Intercept") or name.endswith("_sigma")
+    ]
+    if not variables:
+        variables = list(posterior.data_vars)
 
-    # Parameter estimates
-    for name in models:
-        idata = idatas[name]
-        mc = hssm.rl.RLSSMConfig.from_ssms_model(models[name]["config"])
-        var_names = [f"{p}_Intercept" for p in mc.list_params]
-        print(f"\n{'='*40}")
-        print(f"{name}:")
-        print(az.summary(idata, var_names=var_names, kind="stats",
-                         round_to=3))
+    rhat_values = np.asarray(
+        az.rhat(posterior, var_names=variables, method="rank").to_array(),
+        dtype=float,
+    )
+    ess_values = np.asarray(
+        az.ess(posterior, var_names=variables, method="bulk").to_array(),
+        dtype=float,
+    )
+    finite_rhat = rhat_values[np.isfinite(rhat_values)]
+    finite_ess = ess_values[np.isfinite(ess_values)]
+    max_rhat = float(np.max(finite_rhat)) if finite_rhat.size else None
+    min_bulk_ess = float(np.min(finite_ess)) if finite_ess.size else None
 
-    # Save results
-    out = {
-        "n_sub": n_sub, "n_trials": N_TRIALS,
-        "chains": N_CHAINS, "tune": N_TUNE, "draws": N_DRAWS,
-        "obs_precision": OBS_PRECISION, "beta_upper": 15,
-        "decay_upper": 0.15,
-        "floatX": "float64",
-        "nll_method": "log_mean_exp (posterior-predictive)",
-        "diagnostics": diagnostics,
+    sample_stats = idata.sample_stats
+    if hasattr(sample_stats, "to_dataset"):
+        sample_stats = sample_stats.to_dataset()
+    divergences = (
+        int(np.asarray(sample_stats["diverging"]).sum())
+        if "diverging" in sample_stats
+        else 0
+    )
+    try:
+        energy = np.atleast_2d(np.asarray(sample_stats["energy"], dtype=float))
+        bfmi_values = np.mean(np.diff(energy, axis=1) ** 2, axis=1) / np.var(
+            energy, axis=1, ddof=1
+        )
+        finite_bfmi = bfmi_values[np.isfinite(bfmi_values)]
+        min_bfmi = float(np.min(finite_bfmi)) if finite_bfmi.size else None
+    except (KeyError, TypeError, ValueError):
+        min_bfmi = None
+
+    failures: list[str] = []
+    if divergences:
+        failures.append(f"{divergences} divergences")
+    if max_rhat is None:
+        failures.append("R-hat unavailable")
+    elif max_rhat > MAX_RHAT:
+        failures.append(f"max R-hat {max_rhat:.3f} > {MAX_RHAT:.2f}")
+    if min_bulk_ess is None:
+        failures.append("bulk ESS unavailable")
+    elif min_bulk_ess < MIN_BULK_ESS:
+        failures.append(f"min bulk ESS {min_bulk_ess:.0f} < {MIN_BULK_ESS}")
+    if min_bfmi is not None and min_bfmi < MIN_BFMI:
+        failures.append(f"min BFMI {min_bfmi:.3f} < {MIN_BFMI:.2f}")
+
+    return {
+        "pass": not failures,
+        "failures": failures,
+        "divergences": divergences,
+        "max_rhat": max_rhat,
+        "min_bulk_ess": min_bulk_ess,
+        "min_bfmi": min_bfmi,
+        "checked_variables": variables,
+    }
+
+
+def fit_model(name: str, spec: dict[str, Any], data: pd.DataFrame) -> Any:
+    model_config = hssm.rl.RLSSMConfig.from_ssms_model(spec["config"])
+    model = hssm.RLSSM(
+        data=data,
+        model_config=model_config,
+        p_outlier=0,
+        lapse=None,
+        process_initvals=True,
+        include=spec["include"],
+    )
+    target_accept = 0.99 if name.startswith("HGF") else 0.97
+    return model.sample(
+        sampler=SAMPLER,
+        draws=N_DRAWS,
+        tune=N_TUNE,
+        chains=N_CHAINS,
+        cores=1,
+        target_accept=target_accept,
+        random_seed=SEED,
+        progressbar=False,
+        idata_kwargs={"log_likelihood": False},
+    )
+
+
+def main() -> None:
+    print("=" * 72)
+    print(f"Corrected 7-model comparison (FULL_RUN={FULL_RUN}, sampler={SAMPLER})")
+    print(
+        f"train={N_TRAIN}, validation={N_VALID}, chains={N_CHAINS}, "
+        f"tune={N_TUNE}, draws={N_DRAWS}, scoring draws={N_NLL_DRAWS}"
+    )
+    print(
+        "Validation uses disjoint subjects and population-only parameters; "
+        "all bounded hierarchies use generalized-logit links."
+    )
+    print("=" * 72)
+
+    train_data, valid_data, split_info = load_split_data()
+    models = build_models()
+    results: dict[str, dict[str, Any]] = {}
+
+    for name, spec in models.items():
+        print(f"\n{'=' * 72}\nFitting {name}...")
+        try:
+            idata = fit_model(name, spec, train_data)
+            diagnostics = sampler_diagnostics(idata)
+            status = "PASS" if diagnostics["pass"] else "FAIL"
+            rhat_text = (
+                f"{diagnostics['max_rhat']:.3f}"
+                if diagnostics["max_rhat"] is not None
+                else "unavailable"
+            )
+            ess_text = (
+                f"{diagnostics['min_bulk_ess']:.0f}"
+                if diagnostics["min_bulk_ess"] is not None
+                else "unavailable"
+            )
+            bfmi_text = (
+                f"{diagnostics['min_bfmi']:.3f}"
+                if diagnostics["min_bfmi"] is not None
+                else "unavailable"
+            )
+            print(
+                f"Diagnostics {status}: divergences={diagnostics['divergences']}, "
+                f"max R-hat={rhat_text}, min ESS={ess_text}, min BFMI={bfmi_text}"
+            )
+            if diagnostics["failures"]:
+                print("  " + "; ".join(diagnostics["failures"]))
+
+            print("Scoring held-out trajectories with population parameters...")
+            nll = heldout_population_nll(idata, valid_data, spec)
+            results[name] = {
+                "status": "ok",
+                "eligible": diagnostics["pass"],
+                "heldout_nll_mean": float(np.mean(nll)),
+                "heldout_nll_sd": float(np.std(nll, ddof=1)),
+                "heldout_nll_se": float(np.std(nll, ddof=1) / np.sqrt(len(nll))),
+                "heldout_nll_q03": float(np.quantile(nll, 0.03)),
+                "heldout_nll_q97": float(np.quantile(nll, 0.97)),
+                "heldout_total_nll": float(np.sum(nll)),
+                "diagnostics": diagnostics,
+                "population_parameters": population_parameter_summary(
+                    idata, spec["params"], spec["bounds"]
+                ),
+                "parameter_bounds": {
+                    param: list(bounds) for param, bounds in spec["bounds"].items()
+                },
+            }
+        except Exception as error:  # continue so one failed model does not hide others
+            print(f"FAILED: {type(error).__name__}: {error}")
+            results[name] = {
+                "status": "fit_failed",
+                "eligible": False,
+                "error": f"{type(error).__name__}: {error}",
+            }
+
+    print(f"\n{'=' * 72}\nHeld-out population-level NLL (lower is better)")
+    print(f"{'Model':<20} {'Mean':>9} {'SE':>9} {'Diagnostics':>14}")
+    print(f"{'-' * 20} {'-' * 9} {'-' * 9} {'-' * 14}")
+    for name, result in results.items():
+        if result["status"] != "ok":
+            print(f"{name:<20} {'--':>9} {'--':>9} {'FIT FAILED':>14}")
+            continue
+        diag_status = "PASS" if result["eligible"] else "FAIL"
+        print(
+            f"{name:<20} {result['heldout_nll_mean']:>9.4f} "
+            f"{result['heldout_nll_se']:>9.5f} {diag_status:>14}"
+        )
+    print(f"{'Uniform random':<20} {np.log(4):>9.4f}")
+
+    eligible = {
+        name: result
+        for name, result in results.items()
+        if result.get("eligible", False)
+    }
+    best_model = (
+        min(eligible, key=lambda name: eligible[name]["heldout_nll_mean"])
+        if eligible
+        else None
+    )
+    if best_model is None:
+        print("\nNo model passed all diagnostics; no winner is declared.")
+    else:
+        best = results[best_model]
+        print(
+            f"\nBest eligible model: {best_model} "
+            f"(held-out NLL {best['heldout_nll_mean']:.4f} ± "
+            f"{best['heldout_nll_se']:.5f} SE)"
+        )
+        print("Population parameters:")
+        for param, summary in best["population_parameters"].items():
+            print(
+                f"  {param}: {summary['mean']:.4f} "
+                f"[{summary['q03']:.4f}, {summary['q97']:.4f}]"
+            )
+
+    output = {
+        "run_type": "production" if FULL_RUN else "diagnostic",
+        "seed": SEED,
+        "floatX": FLOATX,
+        "sampler": SAMPLER,
+        "chains": N_CHAINS,
+        "tune": N_TUNE,
+        "draws": N_DRAWS,
+        "posterior_draws_for_scoring": N_NLL_DRAWS,
+        "n_trials_per_trajectory": N_TRIALS,
+        "split": split_info,
+        "evaluation": {
+            "data": "held-out trajectories from disjoint human subjects",
+            "parameters": "population intercepts only (no participant random effects)",
+            "metric": "one-step-ahead posterior predictive log-mean-exp NLL",
+        },
+        "diagnostic_thresholds": {
+            "scope": (
+                "R-hat/ESS on population intercepts and random-effect scales; "
+                "divergences/BFMI global"
+            ),
+            "max_rhat": MAX_RHAT,
+            "min_bulk_ess": MIN_BULK_ESS,
+            "min_bfmi": MIN_BFMI,
+            "max_divergences": 0,
+        },
+        "hgf_constants": {
+            "obs_precision": OBS_PRECISION,
+            "initial_mu1": INITIAL_MU1,
+            "initial_mu2": INITIAL_MU2,
+            "initial_sigma1": INITIAL_SIGMA1,
+            "initial_sigma2": INITIAL_SIGMA2,
+            "theta_var": THETA_VAR,
+            "volatility_update": "unbounded HGF two-expansion update",
+        },
+        "best_model": best_model,
         "results": results,
     }
-    out_path = Path(__file__).resolve().parent.parent / "model_comparison_results_fixed.json"
-    with open(out_path, "w") as f:
-        json.dump(out, f, indent=2)
-    print(f"\nResults saved to {out_path}")
+    output_path = (
+        Path(__file__).resolve().parent.parent
+        / "model_comparison_results_fixed.json"
+    )
+    with output_path.open("w", encoding="utf-8") as file:
+        json.dump(output, file, indent=2, allow_nan=False)
+    print(f"\nResults saved to {output_path}")
 
 
 if __name__ == "__main__":
