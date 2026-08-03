@@ -679,8 +679,8 @@ def main() -> None:
         "results": results,
     }
     output_path = (
-        Path(__file__).resolve().parent.parent
-        / "model_comparison_results_fixed.json"
+        Path(__file__).resolve().parent
+        / "model_comparison_results.json"
     )
     with output_path.open("w", encoding="utf-8") as file:
         json.dump(output, file, indent=2, allow_nan=False)

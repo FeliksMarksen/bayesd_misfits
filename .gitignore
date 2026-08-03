@@ -30,3 +30,7 @@ secrets.env
 artifacts/*
 !artifacts/README.md
 .DS_Store
+
+# Local-only explanation files (not part of the submission contract)
+AGENT_EXPLAINED.md
+SUBMISSION.md

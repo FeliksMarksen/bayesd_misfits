@@ -2,8 +2,8 @@
 # Download the MindRL Challenge public dataset from HuggingFace.
 #
 # Usage:
-#   ./scripts/download_data.sh          # default: ../hf_cache/public
-#   ./scripts/download_data.sh ./my_dir   # custom output directory
+#   ./research/download_data.sh          # default: ../hf_cache/public
+#   ./research/download_data.sh ./my_dir   # custom output directory
 #
 # Requires the `hf` CLI (installed automatically by `uv sync`).
 set -euo pipefail
