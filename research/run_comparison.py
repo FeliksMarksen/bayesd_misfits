@@ -608,7 +608,7 @@ def fit_model(name: str, spec: dict[str, Any], data: pd.DataFrame) -> tuple[Any,
         draws=N_DRAWS,
         tune=N_TUNE,
         chains=N_CHAINS,
-        cores=4,
+        cores=min(N_CHAINS, os.cpu_count() or 1),  # one core per chain, up to available
         target_accept=target_accept,
         random_seed=SEED,
         progressbar=False,
