@@ -68,11 +68,19 @@ def _default_actions() -> list[Any]:
 
 class Agent:
     """
-    Dual-Alpha + Sticky RL submission agent.
+    Dual-Alpha + Sticky RL submission agent with optional resource-rational
+    extensions inspired by Bruckner et al. (2025, Psychological Review).
 
     Maintains action values updated via positive/negative learning rates,
     applies a choice-stickiness perseveration bonus, and selects options
     via a softmax choice rule.
+
+    When ``fatigue_rate`` > 0, a trial-varying resource level degrades the
+    effective learning rate and amplifies stickiness over the session —
+    modelling within-session cognitive fatigue.  When ``surprise_gain`` > 0,
+    the learning rate is modulated by prediction-error magnitude, consistent
+    with the paper's "criterion level of accuracy" stopping rule.  Both default
+    to 0, recovering the original Dual-Alpha + Sticky model.
     """
 
     def __init__(self, config: Mapping[str, Any] | Any | None = None) -> None:
@@ -89,10 +97,41 @@ class Agent:
         if not math.isfinite(self._reward_scale) or self._reward_scale <= 0.0:
             raise ValueError("model.reward_scale must be a positive finite number")
 
+        # --- Resource-rational extensions (Bruckner et al. 2025) -----------
+        # All default to 0 → exact backward compatibility with the original model.
+        self._fatigue_rate = float(get_field(model, "fatigue_rate", 0.0))
+        self._sticky_gain = float(get_field(model, "sticky_gain", 0.0))
+        self._surprise_gain = float(get_field(model, "surprise_gain", 0.0))
+
         self._available_actions: list[Any] = []
         self._q: dict[Any, float] = {}
         self._last_choice: Any = None
         self._history_len = 0
+
+    def _resource_level(self, trial: int) -> float:
+        """Trial-varying cognitive resource level rho_t in (0, 1].
+
+        rho_t = 1 / (1 + fatigue_rate * t)
+        At t=0, rho=1 (full resources).  As t grows, rho → 0 (depleted).
+        When fatigue_rate == 0, rho is always 1 (no fatigue).
+        """
+        if self._fatigue_rate <= 0.0:
+            return 1.0
+        return 1.0 / (1.0 + self._fatigue_rate * trial)
+
+    def _effective_alpha(self, pe: float, trial: int) -> float:
+        """Compute the resource- and surprise-adjusted learning rate."""
+        rho = self._resource_level(trial)
+        base = self._rl_alpha_pos if pe >= 0.0 else self._rl_alpha_neg
+        alpha = base * rho
+        if self._surprise_gain > 0.0:
+            alpha *= 1.0 + self._surprise_gain * abs(pe)
+        return min(alpha, 0.9999)
+
+    def _effective_sticky(self, trial: int) -> float:
+        """Compute the resource-adjusted stickiness bonus."""
+        rho = self._resource_level(trial)
+        return self._sticky + self._sticky_gain * (1.0 - rho)
 
     def reset(self, context: Mapping[str, Any] | Any) -> None:
         actions = get_field(context, "available_actions", default=None)
@@ -122,9 +161,10 @@ class Agent:
         hist = _as_history_list(history)
 
         if len(hist) != self._history_len:
-            # Reconstruct state from history
+            # Reconstruct state from history (must mirror update() exactly)
             q = {a: self._initial_q for a in actions}
             last_choice = None
+            trial_idx = 0
             
             for trial in hist:
                 act = get_field(trial, "action", default=None)
@@ -133,9 +173,10 @@ class Agent:
                     try:
                         r = self._normalize_reward(rew)
                         pe = r - q[act]
-                        alpha = self._rl_alpha_pos if pe >= 0.0 else self._rl_alpha_neg
+                        alpha = self._effective_alpha(pe, trial_idx)
                         q[act] += alpha * pe
                         last_choice = act
+                        trial_idx += 1
                     except (TypeError, ValueError):
                         pass
             self._q = q
@@ -143,11 +184,12 @@ class Agent:
             self._history_len = len(hist)
 
         values = {}
+        sticky_eff = self._effective_sticky(self._history_len)
         for a in actions:
             val = self._q[a]
             if self._last_choice is not None and a == self._last_choice:
-                # Q-scale perseveration bonus; its logit contribution is beta * sticky.
-                val += self._sticky
+                # Q-scale perseveration bonus; its logit contribution is beta * sticky_eff.
+                val += sticky_eff
             values[a] = val
 
         # Numerically stable softmax (shift by max so exp never overflows)
@@ -174,7 +216,7 @@ class Agent:
         try:
             r = self._normalize_reward(reward)
             pe = r - self._q[action]                       # prediction error
-            alpha = self._rl_alpha_pos if pe >= 0.0 else self._rl_alpha_neg  # dual-alpha
+            alpha = self._effective_alpha(pe, self._history_len)
             self._q[action] += alpha * pe                 # the one learning line
             self._last_choice = action                     # sticky bonus uses this next step
             self._history_len += 1

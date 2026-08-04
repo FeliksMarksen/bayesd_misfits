@@ -1,0 +1,41 @@
+# Bayes'd Misfits — MindRL Challenge runtime + model configuration.
+#
+# This config is for the resource-rational extension (Bruckner et al. 2025).
+# The evaluator parses this file and passes it to Agent.__init__(config).
+# When fatigue_rate, sticky_gain, and surprise_gain are all 0, the agent
+# behaves identically to the original Dual-Alpha + Sticky model.
+
+runtime:
+  random_seed: 2026
+  device: cpu
+  execution_type: local_python
+  requires_gpu: false
+  requires_external_api: false
+
+model:
+  name: resource_rational_dual_alpha_sticky_rl
+  type: cognitive_rl_model
+
+  # --- Base parameters (same as original Dual-Alpha + Sticky) -----------
+  rl_alpha_pos: 0.380       # learning rate for positive PEs
+  rl_alpha_neg: 0.763       # learning rate for negative PEs
+  sticky: 0.126              # baseline perseveration bonus
+  beta: 8.331                # softmax inverse temperature
+  initial_q: 0.5             # prior expectation for all arms
+  reward_scale: 1.0          # rewards already on 0-1 scale
+
+  # --- Resource-rational extensions (Bruckner et al. 2025) -------------
+  # These are POPULATED AFTER offline fitting. Set all to 0 to recover
+  # the original model exactly.
+  fatigue_rate: 0.0          # within-session resource depletion rate
+                             # rho_t = 1 / (1 + fatigue_rate * t)
+                             # 0 = no fatigue (original model)
+  sticky_gain: 0.0           # extra stickiness as resources deplete
+                             # sticky_eff = sticky + sticky_gain * (1 - rho_t)
+                             # 0 = constant stickiness (original model)
+  surprise_gain: 0.0         # PE-magnitude gating on learning rate
+                             # alpha_eff = alpha * (1 + surprise_gain * |PE|)
+                             # 0 = no surprise gating (original model)
+
+evaluation:
+  allow_online_state_updates: true
