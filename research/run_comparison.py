@@ -602,7 +602,7 @@ def fit_model(name: str, spec: dict[str, Any], data: pd.DataFrame) -> tuple[Any,
         process_initvals=True,
         include=spec["include"],
     )
-    target_accept = 0.99 if name.startswith("HGF") else 0.97
+    target_accept = 0.99 if (name.startswith("HGF") or "Dual" in name or "Sticky" in name) else 0.97
     idata = model.sample(
         sampler=SAMPLER,
         draws=N_DRAWS,
