@@ -61,6 +61,7 @@ from bayesd_misfits.model import (
     NArmRWDriftLearner,
     NArmRWSticky,
 )
+from bayesd_misfits.resource_rw import NArmRWDualAlphaStickyResource
 
 warnings.filterwarnings("ignore")
 logging.getLogger("jax._src.xla_bridge").setLevel("ERROR")
@@ -107,6 +108,10 @@ PRIOR_SPECS: dict[str, tuple[float, float, float, float, float]] = {
     "z": (0.0, 0.9, 0.5, 0.10, 0.05),
     "t": (0.0, 2.0, 0.3, 0.10, 0.05),
     "theta": (-0.1, 1.45, 0.0, 0.30, 0.10),
+    # Resource-rational extension parameters (Bruckner et al. 2025)
+    "sticky_gain": (0.0, 5.0, 0.0, 0.50, 0.10),
+    "fatigue_rate": (0.0, 0.1, 0.0, 0.02, 0.005),
+    "surprise_gain": (0.0, 5.0, 0.0, 0.50, 0.10),
 }
 
 
@@ -324,6 +329,14 @@ def build_models() -> dict[str, dict[str, Any]]:
                 obs_precision=OBS_PRECISION,
             ),
             ["omega", "kappa", "sticky", "beta"],
+        ),
+        # ── Resource-rational extension (Bruckner et al. 2025) ──
+        (
+            "Resource",
+            "DualAlpha+sticky+resource",
+            lambda: NArmRWDualAlphaStickyResource(4),
+            ["rl_alpha_pos", "rl_alpha_neg", "sticky", "sticky_gain",
+             "fatigue_rate", "surprise_gain", "beta"],
         ),
         # ── Race-model variant (decision module: race_no_bias_angle_4) ──
         (
@@ -595,7 +608,7 @@ def fit_model(name: str, spec: dict[str, Any], data: pd.DataFrame) -> tuple[Any,
         draws=N_DRAWS,
         tune=N_TUNE,
         chains=N_CHAINS,
-        cores=1,
+        cores=4,
         target_accept=target_accept,
         random_seed=SEED,
         progressbar=False,
