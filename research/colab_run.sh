@@ -97,20 +97,54 @@ if py_version < (3, 12):
 
 # Install dependencies
 print("\nInstalling dependencies (this takes a few minutes)...")
+
+# Step 1: Install JAX with GPU support FIRST (before HSSM pulls in CPU-only JAX)
+# Colab VMs have CUDA 12.x, so we use the cuda12 plugin.
+jax_result = subprocess.run(
+    [sys.executable, "-m", "pip", "install", "-q", "jax[cuda12]"],
+    capture_output=True, text=True
+)
+if jax_result.returncode != 0:
+    print("⚠ Could not install jax[cuda12], trying CPU jax...")
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "jax"], check=True)
+else:
+    print("✓ JAX with CUDA installed")
+
+# Step 2: Install HSSM and other deps (without letting them downgrade JAX)
 deps = [
     "hssm @ git+https://github.com/lnccbrown/HSSM.git@main",
     "arviz", "pyhgf", "pyarrow", "huggingface_hub",
     "scipy", "pandas", "numpy",
 ]
 result = subprocess.run(
-    [sys.executable, "-m", "pip", "install", "-q"] + deps,
+    [sys.executable, "-m", "pip", "install", "-q", "--no-deps"] + deps,
     capture_output=True, text=True
 )
+if result.returncode != 0:
+    # Fallback: install with deps (might overwrite JAX with CPU version)
+    print("⚠ --no-deps failed, retrying with deps (GPU JAX may be overwritten)...")
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-q"] + deps,
+        capture_output=True, text=True
+    )
+
 if result.returncode != 0:
     print("✗ pip install failed:")
     print(result.stderr[-2000:])
     sys.exit(1)
 print("✓ Dependencies installed")
+
+# Step 3: Re-install GPU JAX if HSSM overwrote it
+try:
+    import jax
+    has_gpu = any("gpu" in str(d).lower() for d in jax.devices())
+    if not has_gpu:
+        print("⚠ JAX lost GPU support. Reinstalling jax[cuda12]...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "jax[cuda12]", "--force-reinstall"], check=True)
+        import importlib; importlib.reload(jax)
+        has_gpu = any("gpu" in str(d).lower() for d in jax.devices())
+except Exception as e:
+    print(f"⚠ JAX check failed: {e}")
 
 # Check for GPU
 try:
