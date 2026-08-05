@@ -11,11 +11,13 @@
 #   1. Tars the local code files (no repo access needed)
 #   2. Provisions a T4 GPU VM on Colab
 #   3. Uploads the code tarball
-#   4. Installs dependencies + runs the full comparison
-#   5. Downloads the results JSON
-#   6. Releases the VM
+#   4. Installs HSSM + deps (Colab already has Python 3.12 + GPU JAX)
+#   5. Runs the full comparison
+#   6. Downloads the results JSON
+#   7. Releases the VM
 #
-# The entire run takes ~30-60 min on GPU (vs 4+ hours on your laptop).
+# Based on the Carney ARIA Workshop 2026 Colab setup pattern.
+# The entire run takes ~30-60 min on GPU (vs 4+ hours on laptop).
 # Results are saved to ./results_colab.json
 #
 # Prerequisites:
@@ -76,93 +78,37 @@ import subprocess, os, sys, json
 
 print("=" * 60)
 print("Setting up Colab environment...")
+print(f"Python {sys.version_info.major}.{sys.version_info.minor}")
 print("=" * 60)
 
-# Check Python version — HSSM needs 3.12+
-py_version = sys.version_info
-print(f"Python {py_version.major}.{py_version.minor}.{py_version.micro}")
-
-if py_version < (3, 12):
-    print("⚠ HSSM requires Python 3.12+. Attempting conda install...")
-    result = subprocess.run(
-        ["conda", "install", "-y", "-c", "conda-forge", "python=3.12"],
-        capture_output=True, text=True
-    )
-    if result.returncode == 0:
-        print("✓ Python 3.12 installed. Re-running with new Python...")
-        new_python = "/opt/conda/bin/python3.12"
-        if os.path.exists(new_python):
-            os.execv(new_python, [new_python] + sys.argv)
-    print("✗ Could not install Python 3.12. Trying with current version anyway...")
-
-# Install dependencies
-print("\nInstalling dependencies (this takes a few minutes)...")
-
-# Step 1: Install JAX with GPU support FIRST (before HSSM pulls in CPU-only JAX)
-# Colab VMs have CUDA 12.x, so we use the cuda12 plugin.
-jax_result = subprocess.run(
-    [sys.executable, "-m", "pip", "install", "-q", "jax[cuda12]"],
-    capture_output=True, text=True
-)
-if jax_result.returncode != 0:
-    print("⚠ Could not install jax[cuda12], trying CPU jax...")
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "jax"], check=True)
-else:
-    print("✓ JAX with CUDA installed")
-
-# Step 2: Install HSSM and other deps (without letting them downgrade JAX)
-deps = [
-    "hssm @ git+https://github.com/lnccbrown/HSSM.git@main",
+# Install HSSM from git — Colab already has Python 3.12 + GPU JAX.
+# This follows the same pattern as the Carney ARIA Workshop 2026 notebooks.
+print("\nInstalling HSSM + dependencies...")
+subprocess.run([
+    sys.executable, "-m", "pip", "install", "-q",
+    "git+https://github.com/lnccbrown/HSSM.git@main",
     "arviz", "pyhgf", "pyarrow", "huggingface_hub",
-    "scipy", "pandas", "numpy",
-]
-result = subprocess.run(
-    [sys.executable, "-m", "pip", "install", "-q", "--no-deps"] + deps,
-    capture_output=True, text=True
-)
-if result.returncode != 0:
-    # Fallback: install with deps (might overwrite JAX with CPU version)
-    print("⚠ --no-deps failed, retrying with deps (GPU JAX may be overwritten)...")
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "-q"] + deps,
-        capture_output=True, text=True
-    )
-
-if result.returncode != 0:
-    print("✗ pip install failed:")
-    print(result.stderr[-2000:])
-    sys.exit(1)
+    "scipy", "pandas",
+], check=True)
 print("✓ Dependencies installed")
 
-# Step 3: Re-install GPU JAX if HSSM overwrote it
-try:
-    import jax
-    has_gpu = any("gpu" in str(d).lower() for d in jax.devices())
-    if not has_gpu:
-        print("⚠ JAX lost GPU support. Reinstalling jax[cuda12]...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "jax[cuda12]", "--force-reinstall"], check=True)
-        import importlib; importlib.reload(jax)
-        has_gpu = any("gpu" in str(d).lower() for d in jax.devices())
-except Exception as e:
-    print(f"⚠ JAX check failed: {e}")
-
-# Check for GPU
+# Verify GPU
 try:
     import jax
     devices = jax.devices()
     print(f"JAX devices: {devices}")
-    has_gpu = any("gpu" in str(d).lower() for d in devices)
+    has_gpu = any("gpu" in str(d).lower() or "cuda" in str(d).lower() for d in devices)
     if has_gpu:
         print("✓ GPU detected — sampling will be accelerated!")
     else:
-        print("⚠ No GPU detected — running on CPU (slower but works)")
+        print("⚠ No GPU — running on CPU (slower but works)")
 except Exception as e:
     print(f"⚠ JAX check failed: {e}")
 
 # Extract code
 print("\nExtracting code...")
 subprocess.run(["tar", "xzf", "/root/code.tar.gz", "-C", "/root"], check=True)
-print("✓ Code extracted to /root/bayesd_misfits/")
+print("✓ Code extracted")
 
 # Run the comparison
 print("\n" + "=" * 60)
@@ -172,15 +118,12 @@ print("=" * 60)
 os.chdir("/root/bayesd_misfits")
 os.environ["FULL_RUN"] = "1"
 
-result = subprocess.run(
-    [sys.executable, "research/run_comparison.py"],
-    cwd="/root/bayesd_misfits"
-)
+result = subprocess.run([sys.executable, "research/run_comparison.py"])
 
 if result.returncode != 0:
     print(f"\n✗ Comparison exited with code {result.returncode}")
 else:
-    print("\n✓ Comparison completed successfully!")
+    print("\n✓ Comparison completed!")
 
 # Print results summary
 results_path = "research/model_comparison_results.json"
@@ -205,7 +148,6 @@ if os.path.exists(results_path):
         else:
             print(f"{name:<28} {'--':>9} {'--':>9} {r.get('status','?'):>6}")
     print(f"{'Uniform random':<28} {0.6931*2:>9.4f}")
-    print(f"\nResults saved to /root/bayesd_misfits/{results_path}")
 else:
     print("✗ Results file not found")
 
@@ -217,13 +159,13 @@ echo "📥 Downloading results..."
 colab download -s "$SESSION" \
     /root/bayesd_misfits/research/model_comparison_results.json \
     "$RESULT_FILE" 2>/dev/null && echo "   ✓ Results saved to $RESULT_FILE" || \
-    echo "   ⚠ Could not download results. Try: colab download -s $SESSION /root/bayesd_misfits/research/model_comparison_results.json"
+    echo "   ⚠ Could not download. Try: colab download -s $SESSION /root/bayesd_misfits/research/model_comparison_results.json"
 
 # ── Step 6: Release VM ───────────────────────────────────────────────────────
 echo ""
 echo "🧹 Releasing VM..."
 colab stop -s "$SESSION" 2>/dev/null && echo "   ✓ VM released" || \
-    echo "   ⚠ Could not stop VM. Run: colab stop -s $SESSION"
+    echo "   ⚠ Run manually: colab stop -s $SESSION"
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════════════╗"
