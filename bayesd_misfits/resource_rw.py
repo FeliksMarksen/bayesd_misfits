@@ -104,7 +104,7 @@ class NArmRWDualAlphaStickyResource:
             "rl_alpha_neg": (0.0, 1.0),
             "sticky": (-5.0, 5.0),
             "sticky_gain": (0.0, 5.0),
-            "fatigue_rate": (0.0, 0.1),
+            "fatigue_rate": (0.0001, 0.05),
             "surprise_gain": (0.0, 5.0),
         }
 

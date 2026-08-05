@@ -109,9 +109,11 @@ PRIOR_SPECS: dict[str, tuple[float, float, float, float, float]] = {
     "t": (0.0, 2.0, 0.3, 0.10, 0.05),
     "theta": (-0.1, 1.45, 0.0, 0.30, 0.10),
     # Resource-rational extension parameters (Bruckner et al. 2025)
-    "sticky_gain": (0.0, 5.0, 0.0, 0.50, 0.10),
-    "fatigue_rate": (0.0, 0.1, 0.0, 0.02, 0.005),
-    "surprise_gain": (0.0, 5.0, 0.0, 0.50, 0.10),
+    # Tightened SDs: wide priors caused R-hat 3.275. fatigue_rate
+    # lower bound moved from 0 to 0.0001 to avoid non-smooth boundary.
+    "sticky_gain": (0.0, 5.0, 0.0, 0.20, 0.05),
+    "fatigue_rate": (0.0001, 0.05, 0.005, 0.01, 0.002),
+    "surprise_gain": (0.0, 5.0, 0.0, 0.20, 0.05),
 }
 
 
@@ -213,7 +215,13 @@ def load_split_data(include_rt: bool = False) -> tuple[pd.DataFrame, pd.DataFram
         cols = ["participant_id", "trial_id", "response", "feedback"]
         if include_rt:
             cols.append("rt")
-        return selected[cols].reset_index(drop=True)
+        result = selected[cols].reset_index(drop=True)
+        if include_rt:
+            # Race models require positive RTs. Replace placeholder -1.0
+            # (missing RT) with the median of positive RTs.
+            median_rt = result.loc[result["rt"] > 0, "rt"].median()
+            result.loc[result["rt"] <= 0, "rt"] = median_rt
+        return result
 
     train_data = select(train_ids)
     valid_data = select(valid_ids)
