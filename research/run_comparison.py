@@ -74,9 +74,9 @@ FULL_RUN = os.environ.get("FULL_RUN", "0") == "1"
 N_TRIALS = 120
 N_TRAIN = int(os.environ.get("N_TRAIN", 100 if FULL_RUN else 20))
 N_VALID = int(os.environ.get("N_VALID", 300 if FULL_RUN else 60))
-N_CHAINS = int(os.environ.get("N_CHAINS", 4 if FULL_RUN else 2))
-N_TUNE = int(os.environ.get("N_TUNE", 1000 if FULL_RUN else 500))
-N_DRAWS = int(os.environ.get("N_DRAWS", 1000 if FULL_RUN else 500))
+N_CHAINS = int(os.environ.get("N_CHAINS", 8 if FULL_RUN else 2))
+N_TUNE = int(os.environ.get("N_TUNE", 1500 if FULL_RUN else 500))
+N_DRAWS = int(os.environ.get("N_DRAWS", 1500 if FULL_RUN else 500))
 N_NLL_DRAWS = int(os.environ.get("N_NLL_DRAWS", 500 if FULL_RUN else 200))
 SAMPLER = os.environ.get("SAMPLER", "numpyro")
 
