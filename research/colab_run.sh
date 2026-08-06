@@ -90,9 +90,12 @@ print("Setting up Colab environment...")
 print(f"Python {sys.version_info.major}.{sys.version_info.minor}")
 print("=" * 60)
 
-# Install HSSM, then pin JAX + numpyro to versions we know work.
-# Our local dev env uses JAX 0.4.31 + numpyro 0.19.0 with HSSM 0.4.0.
-# Colab or HSSM deps may install incompatible versions (missing xla_pmap_p).
+# Install HSSM, then reconcile JAX with Colab GPU, then fix numba.
+# This sequence was validated in a previous session:
+#   1. HSSM pulls in its deps (may mismatch JAX versions)
+#   2. pip install -U jax[cuda12] reconciles JAX/jaxlib/CUDA plugin
+#      to a consistent set (JAX 0.11.0 on Colab as of Aug 2026)
+#   3. numba>=0.61 needed for NumPy 2.x compatibility
 print("
 Installing HSSM...")
 subprocess.run([
@@ -101,16 +104,21 @@ subprocess.run([
     "arviz", "pyhgf", "pyarrow", "huggingface_hub",
     "scipy", "pandas",
 ], check=True)
-print("Dependencies installed")
+print("HSSM installed")
 
-# Pin JAX + numpyro to known-good versions (matches our local env).
-# Newer JAX removed xla_pmap_p which numpyro 0.19 needs.
-print("Pinning JAX + numpyro to compatible versions...")
+# Reconcile JAX with Colab GPU (HSSM deps may install incompatible versions)
+print("Reconciling JAX / CUDA12...")
 subprocess.run([
-    sys.executable, "-m", "pip", "install", "-q",
-    "jax[cuda12]==0.4.31", "numpyro==0.19.0",
+    sys.executable, "-m", "pip", "install", "-q", "-U", "jax[cuda12]",
 ], check=True)
-print("JAX + numpyro pinned")
+print("JAX reconciled")
+
+# numba for NumPy 2.x compatibility (HSSM deps may pull in old numba)
+print("Upgrading numba for NumPy 2.x...")
+subprocess.run([
+    sys.executable, "-m", "pip", "install", "-q", "numba>=0.61",
+], check=True)
+print("numba upgraded")
 
 # Verify GPU
 try:
