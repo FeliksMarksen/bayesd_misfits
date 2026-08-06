@@ -108,7 +108,7 @@ print("Dependencies installed")
 print("Pinning JAX + numpyro to compatible versions...")
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q",
-    "jax==0.4.31", "numpyro==0.19.0",
+    "jax[cuda12]==0.4.31", "numpyro==0.19.0",
 ], check=True)
 print("JAX + numpyro pinned")
 
