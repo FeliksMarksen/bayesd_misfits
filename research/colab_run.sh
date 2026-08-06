@@ -37,29 +37,38 @@ echo ""
 # ── Step 1: Create tarball of local code ─────────────────────────────────────
 echo "📦 Creating code tarball..."
 TARFILE="/tmp/bayesd_misfits_code.tar.gz"
+STAGE_DIR="/tmp/bayesd_misfits_stage"
 
-# Include resource_rw.py only if it exists (resource-rational branch)
-RESOURCE_FILE=""
-if [ -f "bayesd_misfits/resource_rw.py" ]; then
-    RESOURCE_FILE="bayesd_misfits/resource_rw.py"
-fi
+# Stage files under a single top-level directory so extraction on the VM
+# produces /root/bayesd_misfits/{research,bayesd_misfits,tests}
+rm -rf "$STAGE_DIR"
+mkdir -p "$STAGE_DIR/bayesd_misfits/research"
+mkdir -p "$STAGE_DIR/bayesd_misfits/bayesd_misfits"
+mkdir -p "$STAGE_DIR/bayesd_misfits/tests"
 
-tar czf "$TARFILE" \
-    research/run_comparison.py \
-    bayesd_misfits/__init__.py \
-    bayesd_misfits/model.py \
-    bayesd_misfits/hgf.py \
-    bayesd_misfits/data.py \
-    $RESOURCE_FILE \
-    tests/test_hgf.py 2>/dev/null || true
+cp research/run_comparison.py "$STAGE_DIR/bayesd_misfits/research/"
+cp bayesd_misfits/__init__.py bayesd_misfits/model.py \
+   bayesd_misfits/hgf.py bayesd_misfits/data.py \
+   "$STAGE_DIR/bayesd_misfits/bayesd_misfits/"
+[ -f "bayesd_misfits/resource_rw.py" ] && \
+    cp bayesd_misfits/resource_rw.py "$STAGE_DIR/bayesd_misfits/bayesd_misfits/"
+cp tests/test_hgf.py "$STAGE_DIR/bayesd_misfits/tests/"
+
+tar czf "$TARFILE" -C "$STAGE_DIR" bayesd_misfits
 
 echo "   ✓ $(du -h "$TARFILE" | cut -f1) of code packaged"
 
-# ── Step 2: Provision GPU VM ─────────────────────────────────────────────────
+# ── Step 2: Provision or reuse GPU VM ────────────────────────────────────────
 echo ""
 echo "🖥️  Provisioning Colab T4 GPU VM..."
-colab new --gpu T4 -s "$SESSION"
-echo "   ✓ VM ready"
+if colab sessions 2>/dev/null | grep -q "^\[$SESSION\]"; then
+    echo "   ✓ Reusing existing session '$SESSION'"
+    echo "   🔄 Restarting kernel to ensure clean state..."
+    colab restart-kernel -s "$SESSION"
+else
+    colab new --gpu T4 -s "$SESSION"
+    echo "   ✓ VM ready"
+fi
 
 # ── Step 3: Upload code ───────────────────────────────────────────────────────
 echo ""
@@ -73,7 +82,7 @@ echo "⚙️  Installing dependencies and running comparison..."
 echo "   (This takes 30-60 min on GPU. Go get a coffee.)"
 echo ""
 
-colab exec -s "$SESSION" << 'PYTHON_EOF'
+colab exec -s "$SESSION" --timeout 7200 << 'PYTHON_EOF'
 import subprocess, os, sys, json
 
 print("=" * 60)
@@ -81,16 +90,27 @@ print("Setting up Colab environment...")
 print(f"Python {sys.version_info.major}.{sys.version_info.minor}")
 print("=" * 60)
 
-# Install HSSM from git — Colab already has Python 3.12 + GPU JAX.
-# This follows the same pattern as the Carney ARIA Workshop 2026 notebooks.
-print("\nInstalling HSSM + dependencies...")
+# Install HSSM, then pin JAX + numpyro to versions we know work.
+# Our local dev env uses JAX 0.4.31 + numpyro 0.19.0 with HSSM 0.4.0.
+# Colab or HSSM deps may install incompatible versions (missing xla_pmap_p).
+print("
+Installing HSSM...")
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q",
     "git+https://github.com/lnccbrown/HSSM.git@main",
     "arviz", "pyhgf", "pyarrow", "huggingface_hub",
     "scipy", "pandas",
 ], check=True)
-print("✓ Dependencies installed")
+print("Dependencies installed")
+
+# Pin JAX + numpyro to known-good versions (matches our local env).
+# Newer JAX removed xla_pmap_p which numpyro 0.19 needs.
+print("Pinning JAX + numpyro to compatible versions...")
+subprocess.run([
+    sys.executable, "-m", "pip", "install", "-q",
+    "jax==0.4.31", "numpyro==0.19.0",
+], check=True)
+print("JAX + numpyro pinned")
 
 # Verify GPU
 try:
@@ -110,64 +130,77 @@ print("\nExtracting code...")
 subprocess.run(["tar", "xzf", "/root/code.tar.gz", "-C", "/root"], check=True)
 print("✓ Code extracted")
 
-# Run the comparison
+# The first time HSSM runs in this session, it may need to download the
+# MindRL Challenge dataset from HuggingFace. Pre-download it explicitly so
+# run_comparison.py does not fail with a missing-file error.
+print("\nPre-downloading MindRL Challenge dataset from HuggingFace...")
+from pathlib import Path
+from huggingface_hub import hf_hub_download
+DATA_DIR = Path("/root/bayesd_misfits/hf_cache/public")
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+for filename in [
+    "public_train.jsonl",
+    "public_train_reward_schedules.jsonl",
+    "schema.json",
+    "task_description.md",
+]:
+    try:
+        hf_hub_download(
+            repo_id="mindrl-hub/mindrl-challenge-public",
+            filename=filename,
+            repo_type="dataset",
+            local_dir=str(DATA_DIR),
+        )
+        print(f"  ↓ {filename}")
+    except Exception as e:
+        print(f"  ✗ {filename}: {type(e).__name__}: {e}")
+print("✓ Dataset ready")
+
+# Run the comparison as a DETACHED background process on the VM.
+# This lets you close your laptop; the job keeps running on Colab's hardware.
 print("\n" + "=" * 60)
-print("Starting model comparison (FULL_RUN=1)...")
+print("Starting model comparison in the background (FULL_RUN=1)...")
+print("You can close your laptop now. Check progress later with:")
+print("   colab exec -s mindrl --timeout 30 -- 'tail -20 /root/run_comparison.log'")
 print("=" * 60)
 
 os.chdir("/root/bayesd_misfits")
-os.environ["FULL_RUN"] = "1"
+run_env = os.environ.copy()
+run_env["FULL_RUN"] = "1"
+run_env["PYTHONUNBUFFERED"] = "1"
 
-result = subprocess.run([sys.executable, "research/run_comparison.py"])
+log_path = "/root/run_comparison.log"
+results_path = "/root/bayesd_misfits/research/model_comparison_results.json"
 
-if result.returncode != 0:
-    print(f"\n✗ Comparison exited with code {result.returncode}")
-else:
-    print("\n✓ Comparison completed!")
+# Clean up any stale results/log from a previous run
+for f in [log_path, results_path]:
+    try:
+        os.remove(f)
+    except FileNotFoundError:
+        pass
 
-# Print results summary
-results_path = "research/model_comparison_results.json"
-if os.path.exists(results_path):
-    print("\n" + "=" * 60)
-    print("RESULTS SUMMARY")
-    print("=" * 60)
-    with open(results_path) as f:
-        data = json.load(f)
-    print(f"Best model: {data.get('best_model', '?')}")
-    print(f"Train: {data['split']['train_trajectories']}, "
-          f"Valid: {data['split']['validation_trajectories']}")
-    print()
-    print(f"{'Model':<28} {'NLL':>9} {'SE':>9} {'Diag':>6}")
-    print("-" * 55)
-    for name, r in sorted(data.get("results", {}).items(),
-                          key=lambda x: x[1].get("heldout_nll_mean", 999)):
-        if r.get("status") == "ok":
-            diag = "PASS" if r.get("eligible") else "FAIL"
-            print(f"{name:<28} {r['heldout_nll_mean']:>9.4f} "
-                  f"{r['heldout_nll_se']:>9.5f} {diag:>6}")
-        else:
-            print(f"{name:<28} {'--':>9} {'--':>9} {r.get('status','?'):>6}")
-    print(f"{'Uniform random':<28} {0.6931*2:>9.4f}")
-else:
-    print("✗ Results file not found")
+process = subprocess.Popen(
+    [sys.executable, "-u", "research/run_comparison.py"],
+    cwd="/root/bayesd_misfits",
+    env=run_env,
+    stdout=open(log_path, "w"),
+    stderr=subprocess.STDOUT,
+    start_new_session=True,  # detach from colab exec's process group
+)
+
+print(f"✓ Started background process (pid={process.pid})")
+print(f"✓ Log file: {log_path}")
+print(f"✓ Results will be written to: {results_path}")
+print("\n👉 Use research/colab_poll.sh to check progress and download results.")
 
 PYTHON_EOF
 
-# ── Step 5: Download results ─────────────────────────────────────────────────
+# ── Step 5: Print next steps ─────────────────────────────────────────────────
 echo ""
-echo "📥 Downloading results..."
-colab download -s "$SESSION" \
-    /root/bayesd_misfits/research/model_comparison_results.json \
-    "$RESULT_FILE" 2>/dev/null && echo "   ✓ Results saved to $RESULT_FILE" || \
-    echo "   ⚠ Could not download. Try: colab download -s $SESSION /root/bayesd_misfits/research/model_comparison_results.json"
-
-# ── Step 6: Release VM ───────────────────────────────────────────────────────
-echo ""
-echo "🧹 Releasing VM..."
-colab stop -s "$SESSION" 2>/dev/null && echo "   ✓ VM released" || \
-    echo "   ⚠ Run manually: colab stop -s $SESSION"
-
+echo "🚀 Comparison is running in the background on Colab."
+echo "   Check live log:  colab exec -s $SESSION --timeout 30 -- 'tail -20 /root/run_comparison.log'"
+echo "   Poll + download: bash research/colab_poll.sh"
 echo ""
 echo "╔══════════════════════════════════════════════════════════════════════╗"
-echo "║  Done! Results in $RESULT_FILE (if download succeeded)              ║"
+echo "║  VM left running. Download + stop with colab_poll.sh              ║"
 echo "╚══════════════════════════════════════════════════════════════════════╝"
