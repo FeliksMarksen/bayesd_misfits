@@ -96,8 +96,7 @@ print("=" * 60)
 #   2. pip install -U jax[cuda12] reconciles JAX/jaxlib/CUDA plugin
 #      to a consistent set (JAX 0.11.0 on Colab as of Aug 2026)
 #   3. numba>=0.61 needed for NumPy 2.x compatibility
-print("
-Installing HSSM...")
+print("Installing HSSM...")
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q",
     "git+https://github.com/lnccbrown/HSSM.git@main",
