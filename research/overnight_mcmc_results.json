@@ -1,0 +1,128 @@
+{
+  "run_type": "incremental",
+  "note": "Results built one model at a time via run_single_model.py",
+  "seed": 20260719,
+  "sampler": "numpyro",
+  "chains": 4,
+  "tune": 1000,
+  "draws": 1000,
+  "posterior_draws_for_scoring": 500,
+  "n_train": 300,
+  "n_valid": 300,
+  "full_run": true,
+  "results": {
+    "CausalPooledSingleTrace": {
+      "status": "ok",
+      "eligible": true,
+      "hierarchy": "pooled",
+      "heldout_nll_mean": 0.6083798336996323,
+      "heldout_nll_sd": 0.9273443901539932,
+      "heldout_nll_se": 0.0048875340804440705,
+      "heldout_nll_q03": 0.023005305682323254,
+      "heldout_nll_q97": 3.19185548440089,
+      "heldout_total_nll": 21901.674013186763,
+      "diagnostics": {
+        "pass": true,
+        "failures": [],
+        "divergences": 0,
+        "max_rhat": 1.0020963642061778,
+        "min_bulk_ess": 2756.4646636285174,
+        "min_bfmi": 0.9773177952834321,
+        "checked_variables": [
+          "choice_trace_rate_Intercept",
+          "rl_alpha_Intercept",
+          "repetition_weight_Intercept",
+          "beta_Intercept"
+        ],
+        "parameter_diagnostics": {
+          "choice_trace_rate_Intercept": {
+            "mcse_mean": 0.0006,
+            "ess_bulk": 3000.0,
+            "ess_tail": 2900.0,
+            "r_hat": 1.0
+          },
+          "rl_alpha_Intercept": {
+            "mcse_mean": 0.0044,
+            "ess_bulk": 3100.0,
+            "ess_tail": 2400.0,
+            "r_hat": 1.0
+          },
+          "repetition_weight_Intercept": {
+            "mcse_mean": 0.00026,
+            "ess_bulk": 2800.0,
+            "ess_tail": 2800.0,
+            "r_hat": 1.0
+          },
+          "beta_Intercept": {
+            "mcse_mean": 0.00034,
+            "ess_bulk": 2900.0,
+            "ess_tail": 2500.0,
+            "r_hat": 1.0
+          }
+        }
+      },
+      "population_parameters": {
+        "rl_alpha": {
+          "mean": 0.932905711612957,
+          "sd": 0.014225832210090267,
+          "q03": 0.9041345317812159,
+          "q97": 0.9585963991689836
+        },
+        "beta": {
+          "mean": 0.7161806852896311,
+          "sd": 0.012360009278411976,
+          "q03": 0.6929599840292058,
+          "q97": 0.739554862558319
+        },
+        "repetition_weight": {
+          "mean": 2.541432899638286,
+          "sd": 0.02546667095948367,
+          "q03": 2.4929758441705765,
+          "q97": 2.5879924445022944
+        },
+        "choice_trace_rate": {
+          "mean": 0.3353237137325557,
+          "sd": 0.007225845630644839,
+          "q03": 0.3219095403247476,
+          "q97": 0.34910267753124763
+        }
+      },
+      "parameter_bounds": {
+        "rl_alpha": [
+          0.0,
+          1.0
+        ],
+        "beta": [
+          0.0,
+          15.0
+        ],
+        "repetition_weight": [
+          -5.0,
+          5.0
+        ],
+        "choice_trace_rate": [
+          0.0,
+          1.0
+        ]
+      }
+    }
+  },
+  "split": {
+    "available_complete_trajectories": 1981,
+    "available_subjects": 662,
+    "train_trajectories": 300,
+    "validation_trajectories": 300,
+    "train_subjects": 235,
+    "validation_subjects": 172,
+    "train_rows": 36000,
+    "validation_rows": 36000,
+    "subject_overlap": 0,
+    "sequence_key": "participant_id (trajectory-level HSSM sequence key)",
+    "hierarchy_key": "subject_id (real human participant)"
+  },
+  "grouping": {
+    "rl_sequence": "participant_id column containing one trajectory ID",
+    "hierarchical_random_effect": "subject_id containing the real human subject",
+    "validation_split": "disjoint real human subjects"
+  }
+}

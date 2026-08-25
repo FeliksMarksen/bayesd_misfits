@@ -1,0 +1,66 @@
+{
+  "timestamp": "2026-08-25T23:09:39.064055",
+  "n_train_trajectories": 2000,
+  "n_valid_trajectories": 672,
+  "total_train_trials": 239045,
+  "total_valid_trials": 80316,
+  "restarts": 100,
+  "models": {
+    "CausalRWTrace": {
+      "parameters": {
+        "rl_alpha": 0.999,
+        "beta": 0.6812943440172131,
+        "repetition_weight": 2.5229281247560555,
+        "choice_trace_rate": 0.3235821300865094
+      },
+      "train_nll": 0.6220175392016113,
+      "held_out_nll": 0.616945165148719,
+      "optimizer": {
+        "success": true,
+        "message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+        "nit": 13
+      }
+    },
+    "CausalScaleDualAlphaSticky": {
+      "parameters": {
+        "rl_alpha_pos": 0.716763562956456,
+        "rl_alpha_neg": 0.7958814494821588,
+        "beta": 1.0064298219286834,
+        "repetition_weight": 1.4360083977958744
+      },
+      "train_nll": 0.6757761170721307,
+      "held_out_nll": 0.6701589383574417,
+      "optimizer": {
+        "success": true,
+        "message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+        "nit": 16
+      }
+    },
+    "ChoiceTraceOnly": {
+      "parameters": {
+        "repetition_weight": 3.5370226824892677,
+        "choice_trace_rate": 0.29038229961734635
+      },
+      "train_nll": 0.6768114287035707,
+      "held_out_nll": 0.6742307877733278,
+      "optimizer": {
+        "success": true,
+        "message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+        "nit": 9
+      }
+    },
+    "CausalRWNoHistory": {
+      "parameters": {
+        "rl_alpha": 0.753328068458121,
+        "beta": 1.5224924989787878
+      },
+      "train_nll": 0.8113158138332514,
+      "held_out_nll": 0.7936808860482405,
+      "optimizer": {
+        "success": true,
+        "message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+        "nit": 13
+      }
+    }
+  }
+}
