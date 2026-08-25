@@ -1,20 +1,20 @@
 {
-  "run_type": "diagnostic",
+  "run_type": "production",
   "seed": 20260719,
   "floatX": "float32",
   "sampler": "numpyro",
-  "chains": 2,
-  "tune": 500,
-  "draws": 500,
-  "posterior_draws_for_scoring": 200,
+  "chains": 4,
+  "tune": 1000,
+  "draws": 1000,
+  "posterior_draws_for_scoring": 500,
   "n_trials_per_trajectory": 120,
   "split": {
     "available_complete_trajectories": 1981,
     "available_subjects": 662,
-    "train_trajectories": 20,
-    "validation_trajectories": 60,
-    "train_rows": 2400,
-    "validation_rows": 7200,
+    "train_trajectories": 100,
+    "validation_trajectories": 300,
+    "train_rows": 12000,
+    "validation_rows": 36000,
     "subject_overlap": 0
   },
   "evaluation": {
@@ -25,7 +25,7 @@
   "diagnostic_thresholds": {
     "scope": "R-hat/ESS on population intercepts and random-effect scales; divergences/BFMI global",
     "max_rhat": 1.01,
-    "min_bulk_ess": 100,
+    "min_bulk_ess": 400,
     "min_bfmi": 0.3,
     "max_divergences": 0
   },
@@ -43,38 +43,38 @@
     "RW": {
       "status": "ok",
       "eligible": true,
-      "heldout_nll_mean": 0.6282238440126063,
-      "heldout_nll_sd": 0.8771728768724166,
-      "heldout_nll_se": 0.010337581491823305,
-      "heldout_nll_q03": 0.018053894944642757,
-      "heldout_nll_q97": 3.1249098858313302,
-      "heldout_total_nll": 4523.211676890765,
+      "heldout_nll_mean": 0.7434284658909194,
+      "heldout_nll_sd": 1.1729092513227717,
+      "heldout_nll_se": 0.006181774538104701,
+      "heldout_nll_q03": 0.007396966372630871,
+      "heldout_nll_q97": 4.162694050227306,
+      "heldout_total_nll": 26763.424772073096,
       "diagnostics": {
         "pass": true,
         "failures": [],
         "divergences": 0,
-        "max_rhat": 1.0016992599650594,
-        "min_bulk_ess": 571.2814751080349,
-        "min_bfmi": 0.8084124917168458,
+        "max_rhat": 1.0072898269636323,
+        "min_bulk_ess": 853.4819853051974,
+        "min_bfmi": 0.8034332254013867,
         "checked_variables": [
           "rl_alpha_Intercept",
-          "beta_1|participant_id_sigma",
+          "beta_Intercept",
           "rl_alpha_1|participant_id_sigma",
-          "beta_Intercept"
+          "beta_1|participant_id_sigma"
         ]
       },
       "population_parameters": {
         "rl_alpha": {
-          "mean": 0.5512840073383188,
-          "sd": 0.0591961098601107,
-          "q03": 0.4399737821078524,
-          "q97": 0.6632587791669124
+          "mean": 0.6092364999182527,
+          "sd": 0.03557869649838719,
+          "q03": 0.5413883940745727,
+          "q97": 0.675398474730722
         },
         "beta": {
-          "mean": 12.23461292430669,
-          "sd": 0.45377356686925524,
-          "q03": 11.305375477116769,
-          "q97": 13.024630291438152
+          "mean": 13.727454783996473,
+          "sd": 0.18250508768795629,
+          "q03": 13.364886852395026,
+          "q97": 14.050236670665171
         }
       },
       "parameter_bounds": {
@@ -91,46 +91,46 @@
     "RW+Decay": {
       "status": "ok",
       "eligible": true,
-      "heldout_nll_mean": 0.6569554748213836,
-      "heldout_nll_sd": 0.8610104278050913,
-      "heldout_nll_se": 0.010147105202888506,
-      "heldout_nll_q03": 0.01085452646777508,
-      "heldout_nll_q97": 3.0835042700247497,
-      "heldout_total_nll": 4730.079418713962,
+      "heldout_nll_mean": 0.7072296090205861,
+      "heldout_nll_sd": 1.0503650362004164,
+      "heldout_nll_se": 0.005535909814997547,
+      "heldout_nll_q03": 0.006749392901561535,
+      "heldout_nll_q97": 3.6759228076087433,
+      "heldout_total_nll": 25460.2659247411,
       "diagnostics": {
         "pass": true,
         "failures": [],
         "divergences": 0,
-        "max_rhat": 1.0058524112921963,
-        "min_bulk_ess": 626.8419893533921,
-        "min_bfmi": 0.7705518971617967,
+        "max_rhat": 1.0023397000597976,
+        "min_bulk_ess": 1316.1008422106904,
+        "min_bfmi": 0.846602402255879,
         "checked_variables": [
           "rl_alpha_Intercept",
-          "beta_1|participant_id_sigma",
-          "rl_decay_Intercept",
           "beta_Intercept",
+          "rl_decay_Intercept",
+          "rl_decay_1|participant_id_sigma",
           "rl_alpha_1|participant_id_sigma",
-          "rl_decay_1|participant_id_sigma"
+          "beta_1|participant_id_sigma"
         ]
       },
       "population_parameters": {
         "rl_alpha": {
-          "mean": 0.5767602684179917,
-          "sd": 0.0656976069001528,
-          "q03": 0.4473939199808136,
-          "q97": 0.6993662178942074
+          "mean": 0.6815780193708904,
+          "sd": 0.03736270255497496,
+          "q03": 0.6113045431676225,
+          "q97": 0.7503811388183828
         },
         "rl_decay": {
-          "mean": 0.05268298499576437,
-          "sd": 0.011673855933623783,
-          "q03": 0.03334338705412159,
-          "q97": 0.0762112627137975
+          "mean": 0.038483043121345345,
+          "sd": 0.008603887880624446,
+          "q03": 0.023853123020396407,
+          "q97": 0.0559852039851935
         },
         "beta": {
-          "mean": 14.245023018619854,
-          "sd": 0.19493241270054218,
-          "q03": 13.826224969879188,
-          "q97": 14.575576647335298
+          "mean": 14.750850950401594,
+          "sd": 0.05830792350209826,
+          "q03": 14.628132790025578,
+          "q97": 14.845753341098414
         }
       },
       "parameter_bounds": {
@@ -150,47 +150,50 @@
     },
     "DualAlpha": {
       "status": "ok",
-      "eligible": true,
-      "heldout_nll_mean": 0.6383257239801898,
-      "heldout_nll_sd": 0.8640554654563145,
-      "heldout_nll_se": 0.010182991315757645,
-      "heldout_nll_q03": 0.01712438196704266,
-      "heldout_nll_q97": 3.082759099908322,
-      "heldout_total_nll": 4595.945212657367,
+      "eligible": false,
+      "heldout_nll_mean": 0.7408495520168231,
+      "heldout_nll_sd": 1.15398259831967,
+      "heldout_nll_se": 0.0060820223181489224,
+      "heldout_nll_q03": 0.008203846369884289,
+      "heldout_nll_q97": 4.083292292510174,
+      "heldout_total_nll": 26670.58387260563,
       "diagnostics": {
-        "pass": true,
-        "failures": [],
+        "pass": false,
+        "failures": [
+          "max R-hat 1.029 > 1.01",
+          "min bulk ESS 130 < 400"
+        ],
         "divergences": 0,
-        "max_rhat": 1.0051844461482504,
-        "min_bulk_ess": 296.7166595337295,
-        "min_bfmi": 0.7935062703544842,
+        "max_rhat": 1.029029832988749,
+        "min_bulk_ess": 130.21951439232785,
+        "min_bfmi": 0.8059463778723801,
         "checked_variables": [
-          "rl_alpha_pos_Intercept",
-          "beta_1|participant_id_sigma",
           "rl_alpha_pos_1|participant_id_sigma",
-          "beta_Intercept",
           "rl_alpha_neg_Intercept",
-          "rl_alpha_neg_1|participant_id_sigma"
+          "beta_Intercept",
+          "rl_alpha_neg_1|participant_id_sigma",
+          "beta_1|participant_id_sigma",
+          "rl_alpha_pos_Intercept"
         ]
       },
       "population_parameters": {
         "rl_alpha_pos": {
-          "mean": 0.5389910612195622,
-          "sd": 0.0650138834120981,
-          "q03": 0.4216553137773577,
-          "q97": 0.6639802837254379
+          "mean": 0.5829469586527883,
+          "sd": 0.034927869983161365,
+          "q03": 0.5199077586475489,
+          "q97": 0.6507546626130752
         },
         "rl_alpha_neg": {
-          "mean": 0.35467651818059825,
-          "sd": 0.06909652224613945,
-          "q03": 0.2302277989802454,
-          "q97": 0.4905877400020479
+          "mean": 0.6301987920241116,
+          "sd": 0.054343141011967584,
+          "q03": 0.5242775516471008,
+          "q97": 0.7280043571146579
         },
         "beta": {
-          "mean": 12.704608626662814,
-          "sd": 0.3652075767854754,
-          "q03": 11.989803646480485,
-          "q97": 13.37196459795224
+          "mean": 13.47590796165336,
+          "sd": 0.20929566873355904,
+          "q03": 13.064293281733205,
+          "q97": 13.840652690806884
         }
       },
       "parameter_bounds": {
@@ -211,54 +214,54 @@
     "DualAlpha+Decay": {
       "status": "ok",
       "eligible": true,
-      "heldout_nll_mean": 0.6510336250142801,
-      "heldout_nll_sd": 0.855892332649537,
-      "heldout_nll_se": 0.010086787873034332,
-      "heldout_nll_q03": 0.01114317507312176,
-      "heldout_nll_q97": 3.0514584955649124,
-      "heldout_total_nll": 4687.442100102817,
+      "heldout_nll_mean": 0.7085066382037619,
+      "heldout_nll_sd": 1.0374869155598891,
+      "heldout_nll_se": 0.005468036159653392,
+      "heldout_nll_q03": 0.00713885441889552,
+      "heldout_nll_q97": 3.6160092748748274,
+      "heldout_total_nll": 25506.23897533543,
       "diagnostics": {
         "pass": true,
         "failures": [],
         "divergences": 0,
-        "max_rhat": 1.0081963003372936,
-        "min_bulk_ess": 159.80530604505532,
-        "min_bfmi": 0.7649313356603955,
+        "max_rhat": 1.0055644953605416,
+        "min_bulk_ess": 665.8297433215956,
+        "min_bfmi": 0.834045815005517,
         "checked_variables": [
-          "rl_alpha_pos_Intercept",
-          "beta_1|participant_id_sigma",
           "rl_alpha_pos_1|participant_id_sigma",
-          "rl_decay_Intercept",
-          "beta_Intercept",
           "rl_alpha_neg_Intercept",
+          "beta_Intercept",
+          "rl_alpha_neg_1|participant_id_sigma",
           "rl_decay_1|participant_id_sigma",
-          "rl_alpha_neg_1|participant_id_sigma"
+          "rl_decay_Intercept",
+          "beta_1|participant_id_sigma",
+          "rl_alpha_pos_Intercept"
         ]
       },
       "population_parameters": {
         "rl_alpha_pos": {
-          "mean": 0.6884356717314888,
-          "sd": 0.06311716457977909,
-          "q03": 0.564022203816461,
-          "q97": 0.7978975989772732
+          "mean": 0.6177579237421302,
+          "sd": 0.03967758964900871,
+          "q03": 0.5437787502307395,
+          "q97": 0.6941843023432491
         },
         "rl_alpha_neg": {
-          "mean": 0.3693581409161496,
-          "sd": 0.08812394565784407,
-          "q03": 0.2058606283795224,
-          "q97": 0.5371598811509145
+          "mean": 0.7371971913022857,
+          "sd": 0.05514431009906997,
+          "q03": 0.6262561270768239,
+          "q97": 0.8321202490204782
         },
         "rl_decay": {
-          "mean": 0.045317879251801245,
-          "sd": 0.010060991320358226,
-          "q03": 0.029008732471681786,
-          "q97": 0.0660093248866548
+          "mean": 0.04029265342565212,
+          "sd": 0.00876443788142117,
+          "q03": 0.025475530302930118,
+          "q97": 0.05867218961491122
         },
         "beta": {
-          "mean": 13.947529566579012,
-          "sd": 0.30899835788377084,
-          "q03": 13.311450466892046,
-          "q97": 14.461598943460093
+          "mean": 14.74973412944039,
+          "sd": 0.06034098076525031,
+          "q03": 14.626709748295099,
+          "q97": 14.847580009882844
         }
       },
       "parameter_bounds": {
@@ -280,57 +283,117 @@
         ]
       }
     },
-    "Sticky": {
+    "RW+Sticky": {
       "status": "ok",
       "eligible": true,
-      "heldout_nll_mean": 0.5521356426089885,
-      "heldout_nll_sd": 0.8958203993188182,
-      "heldout_nll_se": 0.010557344651392953,
-      "heldout_nll_q03": 0.01614854902789471,
-      "heldout_nll_q97": 3.0970629724936223,
-      "heldout_total_nll": 3975.3766267847172,
+      "heldout_nll_mean": 0.6649617627541574,
+      "heldout_nll_sd": 1.126849777688599,
+      "heldout_nll_se": 0.005939019797250603,
+      "heldout_nll_q03": 0.008000642214916028,
+      "heldout_nll_q97": 3.9140693630324805,
+      "heldout_total_nll": 23938.623459149665,
       "diagnostics": {
         "pass": true,
         "failures": [],
         "divergences": 0,
-        "max_rhat": 1.0078355324777837,
-        "min_bulk_ess": 144.45909680359085,
-        "min_bfmi": 0.7806298275460003,
+        "max_rhat": 1.0029394398576166,
+        "min_bulk_ess": 1876.6462743591806,
+        "min_bfmi": 0.7355459295583978,
         "checked_variables": [
-          "rl_alpha_pos_Intercept",
-          "beta_1|participant_id_sigma",
-          "rl_alpha_pos_1|participant_id_sigma",
-          "beta_Intercept",
-          "sticky_Intercept",
-          "rl_alpha_neg_Intercept",
+          "rl_alpha_Intercept",
           "sticky_1|participant_id_sigma",
-          "rl_alpha_neg_1|participant_id_sigma"
+          "sticky_Intercept",
+          "beta_Intercept",
+          "rl_alpha_1|participant_id_sigma",
+          "beta_1|participant_id_sigma"
+        ]
+      },
+      "population_parameters": {
+        "rl_alpha": {
+          "mean": 0.58539749870323,
+          "sd": 0.03519498317299762,
+          "q03": 0.5207921583284368,
+          "q97": 0.6520437956090797
+        },
+        "sticky": {
+          "mean": 0.11326886157102374,
+          "sd": 0.008560512445622075,
+          "q03": 0.09740574552331323,
+          "q97": 0.12922016519156607
+        },
+        "beta": {
+          "mean": 10.756817900553465,
+          "sd": 0.3224787658802242,
+          "q03": 10.14453144401521,
+          "q97": 11.351660009277275
+        }
+      },
+      "parameter_bounds": {
+        "rl_alpha": [
+          0.0,
+          1.0
+        ],
+        "sticky": [
+          -3.0,
+          3.0
+        ],
+        "beta": [
+          0.0,
+          15.0
+        ]
+      }
+    },
+    "Sticky": {
+      "status": "ok",
+      "eligible": true,
+      "heldout_nll_mean": 0.662640215563809,
+      "heldout_nll_sd": 1.1273432391731673,
+      "heldout_nll_se": 0.005941620567631942,
+      "heldout_nll_q03": 0.008647796069286144,
+      "heldout_nll_q97": 3.8566554082976787,
+      "heldout_total_nll": 23855.047760297126,
+      "diagnostics": {
+        "pass": true,
+        "failures": [],
+        "divergences": 0,
+        "max_rhat": 1.0009719642638408,
+        "min_bulk_ess": 1814.0228743925716,
+        "min_bfmi": 0.8187820383670568,
+        "checked_variables": [
+          "sticky_1|participant_id_sigma",
+          "rl_alpha_pos_1|participant_id_sigma",
+          "rl_alpha_neg_Intercept",
+          "sticky_Intercept",
+          "beta_Intercept",
+          "rl_alpha_neg_1|participant_id_sigma",
+          "beta_1|participant_id_sigma",
+          "rl_alpha_pos_Intercept"
         ]
       },
       "population_parameters": {
         "rl_alpha_pos": {
-          "mean": 0.4601845388248926,
-          "sd": 0.06824533323758607,
-          "q03": 0.3347066182586873,
-          "q97": 0.5913868841586774
+          "mean": 0.4785078535605359,
+          "sd": 0.033667895323001996,
+          "q03": 0.4192321372865988,
+          "q97": 0.5454341819413998
         },
         "rl_alpha_neg": {
-          "mean": 0.40665479822654343,
-          "sd": 0.07590376369473521,
-          "q03": 0.273505789153865,
-          "q97": 0.5503736428259091
+          "mean": 0.744635516917878,
+          "sd": 0.034704855514552,
+          "q03": 0.6777536226903967,
+          "q97": 0.8087970761824143
         },
         "sticky": {
-          "mean": 0.12400510634449985,
-          "sd": 0.02079627523214155,
-          "q03": 0.0869400859093938,
-          "q97": 0.16373160797533792
+          "mean": 0.12461244700496346,
+          "sd": 0.009478749177049042,
+          "q03": 0.10713027653835017,
+          "q97": 0.14273110819144133
         },
         "beta": {
-          "mean": 9.710156502205734,
-          "sd": 0.4465199876922144,
-          "q03": 8.900316902159906,
-          "q97": 10.594237633165204
+          "mean": 10.238683287377157,
+          "sd": 0.32524264826960403,
+          "q03": 9.649699847457983,
+          "q97": 10.858480975112787
         }
       },
       "parameter_bounds": {
@@ -355,46 +418,46 @@
     "HGF": {
       "status": "ok",
       "eligible": true,
-      "heldout_nll_mean": 0.6563057173699023,
-      "heldout_nll_sd": 0.9510459378672604,
-      "heldout_nll_se": 0.01120818386476433,
-      "heldout_nll_q03": 0.019318338342164728,
-      "heldout_nll_q97": 3.4298431548552255,
-      "heldout_total_nll": 4725.4011650632965,
+      "heldout_nll_mean": 0.7654147864924885,
+      "heldout_nll_sd": 1.2132761907959786,
+      "heldout_nll_se": 0.006394526989613853,
+      "heldout_nll_q03": 0.007681638156078137,
+      "heldout_nll_q97": 4.397696291361947,
+      "heldout_total_nll": 27554.932313729587,
       "diagnostics": {
         "pass": true,
         "failures": [],
         "divergences": 0,
-        "max_rhat": 1.0048389724897557,
-        "min_bulk_ess": 441.3505190123492,
-        "min_bfmi": 0.8810484394244699,
+        "max_rhat": 1.0018063114199178,
+        "min_bulk_ess": 1449.6929004742635,
+        "min_bfmi": 0.8658888199898935,
         "checked_variables": [
-          "kappa_Intercept",
-          "beta_1|participant_id_sigma",
           "omega_1|participant_id_sigma",
           "beta_Intercept",
           "omega_Intercept",
-          "kappa_1|participant_id_sigma"
+          "kappa_1|participant_id_sigma",
+          "beta_1|participant_id_sigma",
+          "kappa_Intercept"
         ]
       },
       "population_parameters": {
         "omega": {
-          "mean": -2.6230533844533857,
-          "sd": 0.5768507697460307,
-          "q03": -3.6692964630721416,
-          "q97": -1.537047388317948
+          "mean": -2.353321766193423,
+          "sd": 0.37387619041403825,
+          "q03": -3.0548707856242427,
+          "q97": -1.6422874261395906
         },
         "kappa": {
-          "mean": 0.2107975425151957,
-          "sd": 0.06559560510095021,
-          "q03": 0.0975938935969959,
-          "q97": 0.3549868965041526
+          "mean": 0.12305900370251878,
+          "sd": 0.0296771973308243,
+          "q03": 0.07124158084899256,
+          "q97": 0.18044090060399715
         },
         "beta": {
-          "mean": 11.622614022633908,
-          "sd": 0.4690632327389165,
-          "q03": 10.72138506221824,
-          "q97": 12.433360572624954
+          "mean": 12.90937345928586,
+          "sd": 0.259617599913616,
+          "q03": 12.398689215577773,
+          "q97": 13.370353111548344
         }
       },
       "parameter_bounds": {
@@ -415,54 +478,54 @@
     "HGF+Sticky": {
       "status": "ok",
       "eligible": true,
-      "heldout_nll_mean": 0.5624763883560779,
-      "heldout_nll_sd": 0.9502803289781621,
-      "heldout_nll_se": 0.01119916107747736,
-      "heldout_nll_q03": 0.020850296922181818,
-      "heldout_nll_q97": 3.342113209672425,
-      "heldout_total_nll": 4049.829996163761,
+      "heldout_nll_mean": 0.6703259474251355,
+      "heldout_nll_sd": 1.1168527050177213,
+      "heldout_nll_se": 0.005886330597960275,
+      "heldout_nll_q03": 0.0112198557006338,
+      "heldout_nll_q97": 3.890274635707042,
+      "heldout_total_nll": 24131.734107304877,
       "diagnostics": {
         "pass": true,
         "failures": [],
         "divergences": 0,
-        "max_rhat": 1.0070124148481474,
-        "min_bulk_ess": 327.7704697590672,
-        "min_bfmi": 0.7830761589828622,
+        "max_rhat": 1.0040463085672813,
+        "min_bulk_ess": 963.6757551991565,
+        "min_bfmi": 0.7583093006822625,
         "checked_variables": [
-          "kappa_Intercept",
-          "beta_1|participant_id_sigma",
+          "sticky_1|participant_id_sigma",
           "omega_1|participant_id_sigma",
-          "beta_Intercept",
           "sticky_Intercept",
           "omega_Intercept",
-          "sticky_1|participant_id_sigma",
-          "kappa_1|participant_id_sigma"
+          "beta_Intercept",
+          "kappa_1|participant_id_sigma",
+          "beta_1|participant_id_sigma",
+          "kappa_Intercept"
         ]
       },
       "population_parameters": {
         "omega": {
-          "mean": -1.7733559300022321,
-          "sd": 0.5591443856037298,
-          "q03": -2.7818216774108846,
-          "q97": -0.6919838284633558
+          "mean": -2.0088796266397817,
+          "sd": 0.2702501933357671,
+          "q03": -2.4833609681446256,
+          "q97": -1.475927052685273
         },
         "kappa": {
-          "mean": 0.27553495311964127,
-          "sd": 0.11453762854085918,
-          "q03": 0.11533464114985127,
-          "q97": 0.5347800439587985
+          "mean": 0.11945082299868116,
+          "sd": 0.0332845048625303,
+          "q03": 0.06339942001008513,
+          "q97": 0.18801216777062396
         },
         "sticky": {
-          "mean": 0.1846880259106955,
-          "sd": 0.029070100131094283,
-          "q03": 0.1317280450214519,
-          "q97": 0.2381559017898597
+          "mean": 0.16022940441448622,
+          "sd": 0.011804342949542778,
+          "q03": 0.13909333503923738,
+          "q97": 0.18308200725046184
         },
         "beta": {
-          "mean": 7.803457417419895,
-          "sd": 0.4179851735313068,
-          "q03": 7.027520427122592,
-          "q97": 8.61297095251846
+          "mean": 8.844113283144925,
+          "sd": 0.286906441647973,
+          "q03": 8.309516779505596,
+          "q97": 9.387706174582918
         }
       },
       "parameter_bounds": {
@@ -483,6 +546,122 @@
           15.0
         ]
       }
+    },
+    "Resource": {
+      "status": "ok",
+      "eligible": false,
+      "heldout_nll_mean": 0.6524927151945252,
+      "heldout_nll_sd": 0.9596604742759367,
+      "heldout_nll_se": 0.005057854798582311,
+      "heldout_nll_q03": 0.02195058480372218,
+      "heldout_nll_q97": 3.336803938304088,
+      "heldout_total_nll": 23489.73774700291,
+      "diagnostics": {
+        "pass": false,
+        "failures": [
+          "max R-hat 3.275 > 1.01",
+          "min bulk ESS 4 < 400"
+        ],
+        "divergences": 0,
+        "max_rhat": 3.2754460768422904,
+        "min_bulk_ess": 4.483623039599566,
+        "min_bfmi": 0.37364710445889376,
+        "checked_variables": [
+          "fatigue_rate_Intercept",
+          "rl_alpha_neg_Intercept",
+          "beta_Intercept",
+          "rl_alpha_neg_1|participant_id_sigma",
+          "rl_alpha_pos_Intercept",
+          "sticky_Intercept",
+          "fatigue_rate_1|participant_id_sigma",
+          "surprise_gain_Intercept",
+          "sticky_1|participant_id_sigma",
+          "rl_alpha_pos_1|participant_id_sigma",
+          "sticky_gain_Intercept",
+          "surprise_gain_1|participant_id_sigma",
+          "sticky_gain_1|participant_id_sigma",
+          "beta_1|participant_id_sigma"
+        ]
+      },
+      "population_parameters": {
+        "rl_alpha_pos": {
+          "mean": 0.31778084068884155,
+          "sd": 0.01065577085860125,
+          "q03": 0.2954863601593984,
+          "q97": 0.3407790305813075
+        },
+        "rl_alpha_neg": {
+          "mean": 0.5428369949255123,
+          "sd": 0.10785670230135234,
+          "q03": 0.35667320961926113,
+          "q97": 0.7023722064561291
+        },
+        "sticky": {
+          "mean": 0.12761500433851664,
+          "sd": 0.0059557864209062745,
+          "q03": 0.11507888640967034,
+          "q97": 0.13747830088567536
+        },
+        "sticky_gain": {
+          "mean": 5.256884899724583e-06,
+          "sd": 2.23472910986824e-07,
+          "q03": 4.852334080294886e-06,
+          "q97": 5.649791950220182e-06
+        },
+        "fatigue_rate": {
+          "mean": 1.1102622148642668e-07,
+          "sd": 1.2936820668481829e-08,
+          "q03": 9.234301577716765e-08,
+          "q97": 1.3584672191040073e-07
+        },
+        "surprise_gain": {
+          "mean": 4.930624023378444e-06,
+          "sd": 2.0712794597149042e-07,
+          "q03": 4.6053101484519375e-06,
+          "q97": 5.248539487989348e-06
+        },
+        "beta": {
+          "mean": 8.872834286070155,
+          "sd": 0.20711607249553624,
+          "q03": 8.555930171215321,
+          "q97": 9.34101651962215
+        }
+      },
+      "parameter_bounds": {
+        "rl_alpha_pos": [
+          0.0,
+          1.0
+        ],
+        "rl_alpha_neg": [
+          0.0,
+          1.0
+        ],
+        "sticky": [
+          -3.0,
+          3.0
+        ],
+        "sticky_gain": [
+          0.0,
+          5.0
+        ],
+        "fatigue_rate": [
+          0.0,
+          0.1
+        ],
+        "surprise_gain": [
+          0.0,
+          5.0
+        ],
+        "beta": [
+          0.0,
+          15.0
+        ]
+      }
+    },
+    "RW+Race": {
+      "status": "fit_failed",
+      "eligible": false,
+      "error": "ValueError: You have negative response times in your dataset, which is not allowed."
     }
   }
 }

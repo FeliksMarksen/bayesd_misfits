@@ -1,0 +1,235 @@
+{
+  "run_type": "incremental",
+  "note": "Results built one model at a time via run_single_model.py",
+  "seed": 20260719,
+  "sampler": "numpyro",
+  "chains": 4,
+  "tune": 500,
+  "draws": 500,
+  "posterior_draws_for_scoring": 200,
+  "n_train": 50,
+  "n_valid": 100,
+  "full_run": false,
+  "results": {
+    "CausalSamplingBandit": {
+      "status": "ok",
+      "eligible": false,
+      "hierarchy": "subject",
+      "heldout_nll_mean": 1.127860520767823,
+      "heldout_nll_sd": 0.7708502406812476,
+      "heldout_nll_se": 0.007036867754656763,
+      "heldout_nll_q03": 0.3053182897047746,
+      "heldout_nll_q97": 2.5976752576308,
+      "heldout_total_nll": 13534.326249213875,
+      "diagnostics": {
+        "pass": false,
+        "failures": [
+          "max R-hat 1.011 > 1.01"
+        ],
+        "divergences": 0,
+        "max_rhat": 1.0111228766797344,
+        "min_bulk_ess": 230.60358767033517,
+        "min_bfmi": 0.7430108507598926,
+        "checked_variables": [
+          "prior_beta_1|subject_id_sigma",
+          "temperature_1|subject_id_sigma",
+          "prior_beta_Intercept",
+          "temperature_Intercept"
+        ],
+        "parameter_diagnostics": {
+          "prior_beta_1|subject_id_sigma": {
+            "mcse_mean": 0.02,
+            "ess_bulk": 230.0,
+            "ess_tail": 350.0,
+            "r_hat": 1.0
+          },
+          "temperature_1|subject_id_sigma": {
+            "mcse_mean": 0.0038,
+            "ess_bulk": 740.0,
+            "ess_tail": 1000.0,
+            "r_hat": 1.0
+          },
+          "prior_beta_Intercept": {
+            "mcse_mean": 0.0086,
+            "ess_bulk": 1900.0,
+            "ess_tail": 1500.0,
+            "r_hat": 1.0
+          },
+          "temperature_Intercept": {
+            "mcse_mean": 0.0097,
+            "ess_bulk": 330.0,
+            "ess_tail": 580.0,
+            "r_hat": 1.0
+          }
+        }
+      },
+      "population_parameters": {
+        "prior_beta": {
+          "mean": 0.26124314063674436,
+          "sd": 0.09589592633694827,
+          "q03": 0.12247373040034164,
+          "q97": 0.4755228344345328
+        },
+        "temperature": {
+          "mean": 0.5733859777180395,
+          "sd": 0.09711894318532421,
+          "q03": 0.41378167603001637,
+          "q97": 0.7734791686096537
+        }
+      },
+      "parameter_bounds": {
+        "prior_beta": [
+          0.0,
+          10.0
+        ],
+        "temperature": [
+          0.0,
+          15.0
+        ]
+      }
+    },
+    "CausalSamplingBanditTrace": {
+      "status": "ok",
+      "eligible": false,
+      "hierarchy": "subject",
+      "heldout_nll_mean": 0.6869624298887002,
+      "heldout_nll_sd": 1.0050295922383847,
+      "heldout_nll_se": 0.009174622977153038,
+      "heldout_nll_q03": 0.047905856080507014,
+      "heldout_nll_q97": 3.2534115299658524,
+      "heldout_total_nll": 8243.549158664402,
+      "diagnostics": {
+        "pass": false,
+        "failures": [
+          "max R-hat 1.019 > 1.01"
+        ],
+        "divergences": 0,
+        "max_rhat": 1.0185300595033766,
+        "min_bulk_ess": 459.47078508313916,
+        "min_bfmi": 0.668633425590111,
+        "checked_variables": [
+          "repetition_weight_1|subject_id_sigma",
+          "temperature_1|subject_id_sigma",
+          "repetition_weight_Intercept",
+          "temperature_Intercept",
+          "choice_trace_rate_Intercept",
+          "prior_beta_Intercept",
+          "prior_beta_1|subject_id_sigma",
+          "choice_trace_rate_1|subject_id_sigma"
+        ],
+        "parameter_diagnostics": {
+          "repetition_weight_1|subject_id_sigma": {
+            "mcse_mean": 0.0017,
+            "ess_bulk": 960.0,
+            "ess_tail": 1100.0,
+            "r_hat": 1.0
+          },
+          "temperature_1|subject_id_sigma": {
+            "mcse_mean": 0.0051,
+            "ess_bulk": 590.0,
+            "ess_tail": 740.0,
+            "r_hat": 1.0
+          },
+          "repetition_weight_Intercept": {
+            "mcse_mean": 0.0031,
+            "ess_bulk": 640.0,
+            "ess_tail": 950.0,
+            "r_hat": 1.0
+          },
+          "temperature_Intercept": {
+            "mcse_mean": 0.007,
+            "ess_bulk": 1100.0,
+            "ess_tail": 1300.0,
+            "r_hat": 1.0
+          },
+          "choice_trace_rate_Intercept": {
+            "mcse_mean": 0.0031,
+            "ess_bulk": 930.0,
+            "ess_tail": 1200.0,
+            "r_hat": 1.0
+          },
+          "prior_beta_Intercept": {
+            "mcse_mean": 0.015,
+            "ess_bulk": 1500.0,
+            "ess_tail": 1300.0,
+            "r_hat": 1.0
+          },
+          "prior_beta_1|subject_id_sigma": {
+            "mcse_mean": 0.0073,
+            "ess_bulk": 620.0,
+            "ess_tail": 710.0,
+            "r_hat": 1.0
+          },
+          "choice_trace_rate_1|subject_id_sigma": {
+            "mcse_mean": 0.005,
+            "ess_bulk": 460.0,
+            "ess_tail": 600.0,
+            "r_hat": 1.0
+          }
+        }
+      },
+      "population_parameters": {
+        "prior_beta": {
+          "mean": 1.1346844485969982,
+          "sd": 0.6162939501195345,
+          "q03": 0.3531448620625764,
+          "q97": 2.558684037993815
+        },
+        "temperature": {
+          "mean": 0.41571711376930853,
+          "sd": 0.09797196623012468,
+          "q03": 0.26580375836694414,
+          "q97": 0.6179123183605069
+        },
+        "repetition_weight": {
+          "mean": 3.1702153482341746,
+          "sd": 0.1186967966640015,
+          "q03": 2.9403583545630476,
+          "q97": 3.3868850920539
+        },
+        "choice_trace_rate": {
+          "mean": 0.41227471571723606,
+          "sd": 0.022987198242823543,
+          "q03": 0.369083962819177,
+          "q97": 0.4544774778738459
+        }
+      },
+      "parameter_bounds": {
+        "prior_beta": [
+          0.0,
+          10.0
+        ],
+        "temperature": [
+          0.0,
+          15.0
+        ],
+        "repetition_weight": [
+          -5.0,
+          5.0
+        ],
+        "choice_trace_rate": [
+          0.0,
+          1.0
+        ]
+      }
+    }
+  },
+  "split": {
+    "available_complete_trajectories": 1981,
+    "available_subjects": 662,
+    "train_trajectories": 50,
+    "validation_trajectories": 100,
+    "train_subjects": 48,
+    "validation_subjects": 85,
+    "train_rows": 6000,
+    "validation_rows": 12000,
+    "subject_overlap": 0,
+    "sequence_key": "participant_id (trajectory-level HSSM sequence key)",
+    "hierarchy_key": "subject_id (real human participant)"
+  },
+  "grouping": {
+    "rl_sequence": "participant_id column containing one trajectory ID",
+    "hierarchical_random_effect": "subject_id containing the real human subject",
+    "validation_split": "disjoint real human subjects"
+  }
+}

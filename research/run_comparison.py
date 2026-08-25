@@ -1,4 +1,4 @@
-"""Fit and compare nine N-arm bandit learning models.
+"""Fit and compare N-arm bandit learning models.
 
 The comparison is deliberately deployment-oriented:
 
@@ -54,6 +54,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from bayesd_misfits.data import ensure_data_downloaded, load_challenge_data
 from bayesd_misfits.hgf import NArmHGF, NArmHGFSticky
+from bayesd_misfits.categorical_logits import register_categorical_logits_4
+from bayesd_misfits.causal_rw import (
+    NArmCausalScaleDualAlphaChoiceTrace,
+    NArmCausalScaleDualAlphaNoHistory,
+    NArmCausalScaleDualAlphaSticky,
+    NArmCausalScaleSingleAlphaChoiceTrace,
+    NArmCausalScaleSingleAlphaNoHistory,
+    NArmCausalScaleSingleAlphaSticky,
+)
+from bayesd_misfits.pyhgf_bandit import (
+    NArmPyHGF,
+    NArmPyHGFSticky,
+    NArmPyHGFUncertainty,
+    NArmPyHGFUncertaintySticky,
+)
 from bayesd_misfits.model import (
     NArmDualAlphaRW,
     NArmRescorlaWagner,
@@ -62,7 +77,10 @@ from bayesd_misfits.model import (
     NArmRWSticky,
 )
 from bayesd_misfits.resource_rw import NArmRWDualAlphaStickyResource
-
+from bayesd_misfits.causal_sampling_bandit import (
+    NArmCausalSamplingBandit,
+    NArmCausalSamplingBanditTrace,
+)
 warnings.filterwarnings("ignore")
 logging.getLogger("jax._src.xla_bridge").setLevel("ERROR")
 
@@ -80,6 +98,13 @@ N_DRAWS = int(os.environ.get("N_DRAWS", 1500 if FULL_RUN else 500))
 N_NLL_DRAWS = int(os.environ.get("N_NLL_DRAWS", 500 if FULL_RUN else 200))
 SAMPLER = os.environ.get("SAMPLER", "numpyro")
 
+# Causal sampling bandit hyperparameters (the mutation chain's discrete
+# accept/reject steps are not differentiable, so these are grid-searched
+# rather than fit; see research/grid_search_causal_sampling.py).
+CSB_N_SAMPLES = int(os.environ.get("CSB_N_SAMPLES", 10))
+CSB_N_PARTICLES = int(os.environ.get("CSB_N_PARTICLES", 32))
+CSB_OBS_SIGMA = float(os.environ.get("CSB_OBS_SIGMA", 0.2))
+CSB_FORGETTING = float(os.environ.get("CSB_FORGETTING", 1.0))
 MAX_RHAT = 1.01
 MIN_BFMI = 0.30
 MIN_BULK_ESS = max(100, N_CHAINS * N_DRAWS // 10)
@@ -92,7 +117,7 @@ INITIAL_MU1 = 0.5
 INITIAL_MU2 = -1.0
 THETA_VAR = 0.01
 
-# Natural-scale prior targets: lower, upper, mean, SD, participant RE SD.
+# Natural-scale prior targets: lower, upper, mean, SD, real-subject RE SD.
 PRIOR_SPECS: dict[str, tuple[float, float, float, float, float]] = {
     "rl_alpha": (0.0, 1.0, 0.30, 0.15, 0.05),
     "rl_alpha_pos": (0.0, 1.0, 0.30, 0.15, 0.05),
@@ -101,7 +126,18 @@ PRIOR_SPECS: dict[str, tuple[float, float, float, float, float]] = {
     "sticky": (-3.0, 3.0, 0.0, 0.50, 0.10),
     "omega": (-8.0, 2.0, -2.0, 1.00, 0.50),
     "kappa": (0.0, 4.0, 1.0, 0.50, 0.10),
+    # Official continuous gHGF: initially fit only value tonic volatility.
+    # Observation precision, coupling, and higher-level dynamics stay fixed.
+    "ghgf_omega": (-8.0, 0.0, -4.0, 1.00, 0.25),
+    "uncertainty_weight": (-10.0, 10.0, 0.0, 2.00, 0.50),
+    "repetition_weight": (-5.0, 5.0, 0.0, 1.50, 0.30),
+    "choice_trace_rate": (0.0, 1.0, 0.50, 0.20, 0.05),
     "beta": (0.0, 15.0, 5.0, 2.00, 0.50),
+    # Causal sampling bandit: Beta-prior strength (pseudo-count), not a
+    # softmax inverse temperature.
+    "prior_beta": (0.0, 10.0, 1.0, 1.00, 0.30),
+    # Causal sampling bandit: softmax inverse temperature (choice sharpness).
+    "temperature": (0.0, 15.0, 1.0, 1.00, 0.30),
     # Race-model decision parameters (for race_no_bias_angle_4)
     "scaler": (0.001, 10.0, 2.0, 1.00, 0.20),
     "a": (1.0, 3.0, 2.0, 0.30, 0.10),
@@ -140,13 +176,20 @@ def inverse_gen_logit(value: Any, bounds: tuple[float, float]) -> Any:
     return lower + (upper - lower) * expit(value)
 
 
-def hierarchical_param(name: str) -> hssm.Param:
-    """Create a bounded hierarchy with priors expressed on link scale.
+def model_param(name: str, hierarchy: str = "subject") -> hssm.Param:
+    """Create a bounded pooled or subject-level parameter model.
 
     The prior targets in ``PRIOR_SPECS`` are intuitive natural-scale values.
     A delta-method conversion puts both the intercept and random-effect scale
     on the generalized-logit linear-predictor scale used by Bambi/HSSM.
+
+    ``participant_id`` is reserved for HSSM's independent RL sequence key and
+    therefore contains trajectory IDs.  Genuine hierarchical variation is
+    grouped by the separate ``subject_id`` column.
     """
+    if hierarchy not in {"pooled", "subject"}:
+        raise ValueError(f"Unknown hierarchy {hierarchy!r}")
+
     lower, upper, mean, sd, re_sd = PRIOR_SPECS[name]
     proportion = np.clip((mean - lower) / (upper - lower), 1e-6, 1.0 - 1e-6)
     eta_mean = float(logit(proportion))
@@ -154,20 +197,30 @@ def hierarchical_param(name: str) -> hssm.Param:
     eta_sd = float(sd / derivative)
     eta_re_sd = float(re_sd / derivative)
 
+    prior: dict[str, Any] = {
+        "Intercept": hssm.Prior("Normal", mu=eta_mean, sigma=eta_sd)
+    }
+    formula = f"{name} ~ 1"
+    if hierarchy == "subject":
+        formula += " + (1|subject_id)"
+        prior["1|subject_id"] = {
+            "name": "Normal",
+            "mu": 0.0,
+            "sigma": {"name": "HalfNormal", "sigma": eta_re_sd},
+        }
+
     return hssm.Param(
         name,
-        formula=f"{name} ~ 1 + (1|participant_id)",
+        formula=formula,
         bounds=(lower, upper),
         link="log_logit",
-        prior={
-            "Intercept": hssm.Prior("Normal", mu=eta_mean, sigma=eta_sd),
-            "1|participant_id": {
-                "name": "Normal",
-                "mu": 0.0,
-                "sigma": {"name": "HalfNormal", "sigma": eta_re_sd},
-            },
-        },
+        prior=prior,
     )
+
+
+def hierarchical_param(name: str) -> hssm.Param:
+    """Backward-compatible alias for a real-subject hierarchy."""
+    return model_param(name, hierarchy="subject")
 
 
 def load_split_data(include_rt: bool = False) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
@@ -178,6 +231,10 @@ def load_split_data(include_rt: bool = False) -> tuple[pd.DataFrame, pd.DataFram
         rt_placeholder=-1.0,
         group_by="trajectory",
     )
+    # HSSM calls its independent sequence key ``participant_id``.  Because RL
+    # state must reset for every task trajectory, this column intentionally
+    # contains trajectory IDs.  Human identity remains in ``subject_id`` and
+    # is used only for subject-level random effects and leakage-free splitting.
     trial_counts = df.groupby("participant_id").size()
     complete_ids = trial_counts[trial_counts == N_TRIALS].index
     df = df[df["participant_id"].isin(complete_ids)].copy()
@@ -212,7 +269,16 @@ def load_split_data(include_rt: bool = False) -> tuple[pd.DataFrame, pd.DataFram
         }
         selected["participant_id"] = selected["participant_id"].map(id_map)
         selected = selected.sort_values(["participant_id", "trial_id"])
-        cols = ["participant_id", "trial_id", "response", "feedback"]
+        selected["sequence_id"] = selected["participant_id"]
+        cols = [
+            "participant_id",
+            "sequence_id",
+            "subject_id",
+            "trajectory_id",
+            "trial_id",
+            "response",
+            "feedback",
+        ]
         if include_rt:
             cols.append("rt")
         result = selected[cols].reset_index(drop=True)
@@ -225,18 +291,34 @@ def load_split_data(include_rt: bool = False) -> tuple[pd.DataFrame, pd.DataFram
 
     train_data = select(train_ids)
     valid_data = select(valid_ids)
+    train_subject_ids = set(
+        train_data["subject_id"].astype(str).unique().tolist()
+    )
+    valid_subject_ids = set(
+        valid_data["subject_id"].astype(str).unique().tolist()
+    )
+    overlap = train_subject_ids & valid_subject_ids
+    if overlap:
+        raise RuntimeError(f"Subject leakage detected: {sorted(overlap)[:5]}")
+
     split_info = {
         "available_complete_trajectories": int(len(complete_ids)),
         "available_subjects": int(len(subjects)),
         "train_trajectories": int(train_data["participant_id"].nunique()),
         "validation_trajectories": int(valid_data["participant_id"].nunique()),
+        "train_subjects": len(train_subject_ids),
+        "validation_subjects": len(valid_subject_ids),
         "train_rows": int(len(train_data)),
         "validation_rows": int(len(valid_data)),
-        "subject_overlap": 0,
+        "subject_overlap": len(overlap),
+        "sequence_key": "participant_id (trajectory-level HSSM sequence key)",
+        "hierarchy_key": "subject_id (real human participant)",
     }
     print(
-        f"Training: {split_info['train_trajectories']} trajectories × {N_TRIALS} trials; "
-        f"validation: {split_info['validation_trajectories']} × {N_TRIALS}; "
+        f"Training: {split_info['train_trajectories']} trajectories from "
+        f"{split_info['train_subjects']} subjects × {N_TRIALS} trials; "
+        f"validation: {split_info['validation_trajectories']} trajectories from "
+        f"{split_info['validation_subjects']} disjoint subjects; "
         "human subjects are disjoint."
     )
     return train_data, valid_data, split_info
@@ -268,6 +350,7 @@ def _make_config(
 
 def build_models() -> dict[str, dict[str, Any]]:
     """Build matched model specifications with explicit, verified bounds."""
+    direct_logits_decision = register_categorical_logits_4()
     env = Bandit.bernoulli(
         probabilities=[0.25] * 4,
         response_labels=[0, 1, 2, 3],
@@ -311,6 +394,18 @@ def build_models() -> dict[str, dict[str, Any]]:
             ["rl_alpha_pos", "rl_alpha_neg", "sticky", "beta"],
         ),
         (
+            "CausalScaleSticky",
+            "DualAlpha+causal-running-standardization+separate-repetition",
+            lambda: NArmCausalScaleDualAlphaSticky(4),
+            [
+                "rl_alpha_pos",
+                "rl_alpha_neg",
+                "beta",
+                "repetition_weight",
+            ],
+            direct_logits_decision,
+        ),
+        (
             "HGF",
             "uHGF",
             lambda: NArmHGF(
@@ -337,6 +432,67 @@ def build_models() -> dict[str, dict[str, Any]]:
                 obs_precision=OBS_PRECISION,
             ),
             ["omega", "kappa", "sticky", "beta"],
+        ),
+        (
+            "PyHGF",
+            "official-pyhgf-gHGF",
+            lambda: NArmPyHGF(4),
+            ["ghgf_omega", "beta"],
+        ),
+        (
+            "PyHGF+Sticky",
+            "official-pyhgf-gHGF+sticky",
+            lambda: NArmPyHGFSticky(4),
+            ["ghgf_omega", "sticky", "beta"],
+        ),
+        (
+            "PyHGF+Uncertainty",
+            "official-pyhgf-gHGF+uncertainty",
+            lambda: NArmPyHGFUncertainty(4),
+            ["ghgf_omega", "beta", "uncertainty_weight"],
+            direct_logits_decision,
+        ),
+        (
+            "PyHGF+Uncertainty+Sticky",
+            "official-pyhgf-gHGF+uncertainty+separate-repetition",
+            lambda: NArmPyHGFUncertaintySticky(4),
+            [
+                "ghgf_omega",
+                "beta",
+                "uncertainty_weight",
+                "repetition_weight",
+            ],
+            direct_logits_decision,
+        ),
+        # ── Causal sampling bandit (BMS-inspired) ──
+        # ``prior_beta`` and ``temperature`` are differentiable; ``n_samples``,
+        # ``obs_sigma`` and ``forgetting`` are grid-searched hyperparameters
+        # (see research/grid_search_causal_sampling.py).
+        (
+            "CausalSamplingBandit",
+            "BMS-inspired-causal-sampling-bandit",
+            lambda: NArmCausalSamplingBandit(
+                4,
+                n_samples=CSB_N_SAMPLES,
+                n_particles=CSB_N_PARTICLES,
+                obs_sigma=CSB_OBS_SIGMA,
+                forgetting=CSB_FORGETTING,
+            ),
+            ["prior_beta", "temperature"],
+            direct_logits_decision,
+        ),
+        (
+            "CausalSamplingBanditTrace",
+            "BMS-inspired-causal-sampling-bandit-with-choice-trace",
+            lambda: NArmCausalSamplingBanditTrace(
+                4,
+                n_samples=CSB_N_SAMPLES,
+                n_particles=CSB_N_PARTICLES,
+                obs_sigma=CSB_OBS_SIGMA,
+                forgetting=CSB_FORGETTING,
+            ),
+            ["prior_beta", "temperature", "repetition_weight", "choice_trace_rate"],
+            direct_logits_decision,
         ),
         # ── Resource-rational extension (Bruckner et al. 2025) ──
         (
@@ -376,8 +532,87 @@ def build_models() -> dict[str, dict[str, Any]]:
             "bounds": actual_bounds,
             "learner_factory": factory,
             "include": [hierarchical_param(param) for param in params],
-            "is_race": decision != "inv_temp_softmax_4",
+            "hierarchy": "subject",
+            "is_race": decision == "race_no_bias_angle_4",
+            "uses_direct_logits": decision == direct_logits_decision,
         }
+
+    # Deployment-focused factorial comparison.  Each behavioral mechanism is
+    # fitted both pooled and with random effects for real human subjects.  RL
+    # sequences remain trajectory-level in both cases so their states reset at
+    # task boundaries.
+    causal_variants: list[
+        tuple[str, str, Callable[[], Any], list[str]]
+    ] = [
+        (
+            "SingleNoHistory",
+            "single-alpha+no-choice-history",
+            lambda: NArmCausalScaleSingleAlphaNoHistory(4),
+            ["rl_alpha", "beta"],
+        ),
+        (
+            "DualNoHistory",
+            "dual-alpha+no-choice-history",
+            lambda: NArmCausalScaleDualAlphaNoHistory(4),
+            ["rl_alpha_pos", "rl_alpha_neg", "beta"],
+        ),
+        (
+            "SingleImmediate",
+            "single-alpha+immediate-repetition",
+            lambda: NArmCausalScaleSingleAlphaSticky(4),
+            ["rl_alpha", "beta", "repetition_weight"],
+        ),
+        (
+            "DualImmediate",
+            "dual-alpha+immediate-repetition",
+            lambda: NArmCausalScaleDualAlphaSticky(4),
+            ["rl_alpha_pos", "rl_alpha_neg", "beta", "repetition_weight"],
+        ),
+        (
+            "SingleTrace",
+            "single-alpha+gradual-choice-trace",
+            lambda: NArmCausalScaleSingleAlphaChoiceTrace(4),
+            ["rl_alpha", "beta", "repetition_weight", "choice_trace_rate"],
+        ),
+        (
+            "DualTrace",
+            "dual-alpha+gradual-choice-trace",
+            lambda: NArmCausalScaleDualAlphaChoiceTrace(4),
+            [
+                "rl_alpha_pos",
+                "rl_alpha_neg",
+                "beta",
+                "repetition_weight",
+                "choice_trace_rate",
+            ],
+        ),
+    ]
+    for hierarchy in ("pooled", "subject"):
+        hierarchy_label = "Pooled" if hierarchy == "pooled" else "Subject"
+        for suffix, mechanism, factory, params in causal_variants:
+            name = f"Causal{hierarchy_label}{suffix}"
+            learner = factory()
+            config = _make_config(
+                f"causal-running-standardization+{mechanism}+{hierarchy}",
+                learner,
+                env,
+                params,
+                decision=direct_logits_decision,
+            )
+            actual_bounds = {
+                param: tuple(config.bounds[param]) for param in params
+            }
+            models[name] = {
+                "config": config,
+                "params": params,
+                "bounds": actual_bounds,
+                "learner_factory": factory,
+                "include": [model_param(param, hierarchy) for param in params],
+                "hierarchy": hierarchy,
+                "is_race": False,
+                "uses_direct_logits": True,
+                "target_accept": 0.99,
+            }
     return models
 
 
@@ -445,8 +680,14 @@ def heldout_population_nll(
             def score_trial(state, observation):
                 choice, reward = observation
                 computed = learner.compute_jax(state, theta, context={})
-                values = jnp.stack([computed[f"q{i}"] for i in range(4)])
-                log_probability = jax.nn.log_softmax(theta["beta"] * values)[choice]
+                if spec.get("uses_direct_logits", False):
+                    logits = jnp.stack([
+                        computed[f"logit{i}"] for i in range(4)
+                    ])
+                else:
+                    values = jnp.stack([computed[f"q{i}"] for i in range(4)])
+                    logits = theta["beta"] * values
+                log_probability = jax.nn.log_softmax(logits)[choice]
                 updated_state = learner.update_jax(
                     state,
                     theta,
@@ -552,6 +793,22 @@ def sampler_diagnostics(idata: Any) -> dict[str, Any]:
     max_rhat = float(np.max(finite_rhat)) if finite_rhat.size else None
     min_bulk_ess = float(np.min(finite_ess)) if finite_ess.size else None
 
+    diagnostic_frame = az.summary(
+        posterior,
+        var_names=variables,
+        kind="diagnostics",
+        round_to=None,
+    )
+    parameter_diagnostics: dict[str, dict[str, float | None]] = {}
+    for variable, row in diagnostic_frame.iterrows():
+        parameter_diagnostics[str(variable)] = {
+            field: (
+                float(row[field]) if np.isfinite(row[field]) else None
+            )
+            for field in ("mcse_mean", "ess_bulk", "ess_tail", "r_hat")
+            if field in row.index
+        }
+
     sample_stats = idata.sample_stats
     if hasattr(sample_stats, "to_dataset"):
         sample_stats = sample_stats.to_dataset()
@@ -592,6 +849,7 @@ def sampler_diagnostics(idata: Any) -> dict[str, Any]:
         "min_bulk_ess": min_bulk_ess,
         "min_bfmi": min_bfmi,
         "checked_variables": variables,
+        "parameter_diagnostics": parameter_diagnostics,
     }
 
 
@@ -610,7 +868,10 @@ def fit_model(name: str, spec: dict[str, Any], data: pd.DataFrame) -> tuple[Any,
         process_initvals=True,
         include=spec["include"],
     )
-    target_accept = 0.99 if (name.startswith("HGF") or "Dual" in name or "Sticky" in name) else 0.97
+    target_accept = spec.get(
+        "target_accept",
+        0.99 if ("HGF" in name or "Dual" in name or "Sticky" in name) else 0.97,
+    )
     idata = model.sample(
         sampler=SAMPLER,
         draws=N_DRAWS,
@@ -627,14 +888,14 @@ def fit_model(name: str, spec: dict[str, Any], data: pd.DataFrame) -> tuple[Any,
 
 def main() -> None:
     print("=" * 72)
-    print(f"Corrected 7-model comparison (FULL_RUN={FULL_RUN}, sampler={SAMPLER})")
+    print(f"Model comparison (FULL_RUN={FULL_RUN}, sampler={SAMPLER})")
     print(
         f"train={N_TRAIN}, validation={N_VALID}, chains={N_CHAINS}, "
         f"tune={N_TUNE}, draws={N_DRAWS}, scoring draws={N_NLL_DRAWS}"
     )
     print(
         "Validation uses disjoint subjects and population-only parameters; "
-        "all bounded hierarchies use generalized-logit links."
+        "RL state is trajectory-specific and random effects are subject-specific."
     )
     print("=" * 72)
 
@@ -756,8 +1017,10 @@ def main() -> None:
         "split": split_info,
         "evaluation": {
             "data": "held-out trajectories from disjoint human subjects",
-            "parameters": "population intercepts only (no participant random effects)",
+            "parameters": "population intercepts only (no held-out-subject random effects)",
             "metric": "one-step-ahead posterior predictive log-mean-exp NLL",
+            "sequence_group": "trajectory",
+            "hierarchical_group": "real human subject (for subject models)",
         },
         "diagnostic_thresholds": {
             "scope": (
@@ -777,6 +1040,18 @@ def main() -> None:
             "initial_sigma2": INITIAL_SIGMA2,
             "theta_var": THETA_VAR,
             "volatility_update": "unbounded HGF two-expansion update",
+        },
+        "pyhgf_constants": {
+            "implementation": "pyhgf.model.Network",
+            "network": "one continuous observation/value/volatility branch per arm",
+            "sensory_precision": 20.0,
+            "initial_value_mean": 0.5,
+            "initial_value_precision": 4.0,
+            "initial_volatility_mean": -1.0,
+            "initial_volatility_precision": 1.0,
+            "volatility_tonic_volatility": -4.0,
+            "volatility_coupling": 1.0,
+            "fitted_perceptual_parameters": ["ghgf_omega"],
         },
         "best_model": best_model,
         "results": results,

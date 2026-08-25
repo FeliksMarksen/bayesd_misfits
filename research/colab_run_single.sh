@@ -1,36 +1,29 @@
 #!/bin/bash
 # ──────────────────────────────────────────────────────────────────────────────
-# MindRL Model Comparison — Colab GPU Runner (for private repos)
+# MindRL Model Comparison — Run one model on Colab and download results
 # ──────────────────────────────────────────────────────────────────────────────
 #
 # Usage (from the bayesd_misfits repo root):
 #
-#   bash research/colab_run.sh
+#   bash research/colab_run_single.sh RW
+#   bash research/colab_run_single.sh HGF
+#   bash research/colab_run_single.sh RW+Race
 #
-# What it does:
-#   1. Tars the local code files (no repo access needed)
-#   2. Provisions a T4 GPU VM on Colab
-#   3. Uploads the code tarball
-#   4. Installs HSSM + deps (Colab already has Python 3.12 + GPU JAX)
-#   5. Runs the full comparison
-#   6. Downloads the results JSON
-#   7. Releases the VM
-#
-# Based on the Carney ARIA Workshop 2026 Colab setup pattern.
-# The entire run takes ~30-60 min on GPU (vs 4+ hours on laptop).
-# Results are saved to ./results_colab.json
-#
-# Prerequisites:
-#   - colab-cli installed and authenticated (pip install colab-cli && colab auth)
-#   - Run from the bayesd_misfits repo root
+# This script is also called by research/colab_run_all.sh.
 # ──────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
 SESSION="mindrl"
-RESULT_FILE="./results_colab.json"
+MODEL_NAME="${1:-}"
+
+if [ -z "$MODEL_NAME" ]; then
+    echo "Usage: bash research/colab_run_single.sh <MODEL_NAME>"
+    echo "Example: bash research/colab_run_single.sh RW"
+    exit 1
+fi
 
 echo "╔══════════════════════════════════════════════════════════════════════╗"
-echo "║  MindRL Model Comparison — Colab GPU Runner                        ║"
+echo "║  MindRL Single-Model Colab Runner: $MODEL_NAME"
 echo "╚══════════════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -39,14 +32,12 @@ echo "📦 Creating code tarball..."
 TARFILE="/tmp/bayesd_misfits_code.tar.gz"
 STAGE_DIR="/tmp/bayesd_misfits_stage"
 
-# Stage files under a single top-level directory so extraction on the VM
-# produces /root/bayesd_misfits/{research,bayesd_misfits,tests}
 rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR/bayesd_misfits/research"
 mkdir -p "$STAGE_DIR/bayesd_misfits/bayesd_misfits"
 mkdir -p "$STAGE_DIR/bayesd_misfits/tests"
 
-cp research/run_comparison.py "$STAGE_DIR/bayesd_misfits/research/"
+cp research/run_comparison.py research/run_single_model.py "$STAGE_DIR/bayesd_misfits/research/"
 cp bayesd_misfits/__init__.py bayesd_misfits/model.py \
    bayesd_misfits/hgf.py bayesd_misfits/data.py \
    "$STAGE_DIR/bayesd_misfits/bayesd_misfits/"
@@ -64,7 +55,7 @@ echo "🖥️  Provisioning Colab T4 GPU VM..."
 if colab sessions 2>/dev/null | grep -q "^\[$SESSION\]"; then
     echo "   ✓ Reusing existing session '$SESSION'"
     echo "   🔄 Restarting kernel to ensure clean state..."
-    colab restart-kernel -s "$SESSION"
+    colab restart-kernel -s "$SESSION" || true
 else
     colab new --gpu T4 -s "$SESSION"
     echo "   ✓ VM ready"
@@ -76,27 +67,28 @@ echo "📤 Uploading code to VM..."
 colab upload -s "$SESSION" "$TARFILE" /root/code.tar.gz
 echo "   ✓ Code uploaded"
 
-# ── Step 4: Install deps + run comparison ────────────────────────────────────
+# ── Step 4: Install deps + start single model in the background ──────────────
 echo ""
-echo "⚙️  Installing dependencies and running comparison..."
-echo "   (This takes 30-60 min on GPU. Go get a coffee.)"
+echo "⚙️  Installing dependencies and starting model '$MODEL_NAME' in the background..."
+echo "   This VM-side background job keeps running if you close your laptop."
+echo "   Estimated time: ~30-60 min per model on T4 GPU."
 echo ""
 
-colab exec -s "$SESSION" --timeout 7200 << 'PYTHON_EOF'
-import subprocess, os, sys, json
+LOG_PATH="/root/run_single_${MODEL_NAME//+/_}.log"
+
+colab exec -s "$SESSION" --timeout 7200 << PYTHON_EOF
+import subprocess, os, sys
+
+# Shell-injected constants (heredoc is unquoted so these expand)
+MODEL_NAME = "$MODEL_NAME"
+LOG_PATH = "$LOG_PATH"
 
 print("=" * 60)
 print("Setting up Colab environment...")
 print(f"Python {sys.version_info.major}.{sys.version_info.minor}")
 print("=" * 60)
 
-# Install HSSM, then reconcile JAX with Colab GPU, then fix numba.
-# This sequence was validated in a previous session:
-#   1. HSSM pulls in its deps (may mismatch JAX versions)
-#   2. pip install -U jax[cuda12] reconciles JAX/jaxlib/CUDA plugin
-#      to a consistent set (JAX 0.11.0 on Colab as of Aug 2026)
-#   3. numba>=0.61 needed for NumPy 2.x compatibility
-print("Installing HSSM...")
+print("\nInstalling HSSM...")
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q",
     "git+https://github.com/lnccbrown/HSSM.git@main",
@@ -105,50 +97,33 @@ subprocess.run([
 ], check=True)
 print("HSSM installed")
 
-# Reconcile JAX with Colab GPU (HSSM deps may install incompatible versions)
-print("Reconciling JAX / CUDA12...")
+print("\nReconciling JAX / CUDA12...")
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q", "-U", "jax[cuda12]",
 ], check=True)
 print("JAX reconciled")
 
-# numba for NumPy 2.x compatibility (HSSM deps may pull in old numba)
-print("Upgrading numba for NumPy 2.x...")
+print("\nUpgrading numba for NumPy 2.x...")
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q", "numba>=0.61",
 ], check=True)
 print("numba upgraded")
 
-# NumPyro for JAX 0.11 compatibility (HSSM deps may install old numpyro that
-# references xla_pmap_p, removed in JAX 0.11)
-print("Upgrading NumPyro for JAX 0.11 compatibility...")
+print("\nUpgrading NumPyro for JAX 0.11 compatibility...")
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q", "numpyro>=0.21",
 ], check=True)
 print("NumPyro upgraded")
 
-# Verify GPU
-try:
-    import jax
-    devices = jax.devices()
-    print(f"JAX devices: {devices}")
-    has_gpu = any("gpu" in str(d).lower() or "cuda" in str(d).lower() for d in devices)
-    if has_gpu:
-        print("✓ GPU detected — sampling will be accelerated!")
-    else:
-        print("⚠ No GPU — running on CPU (slower but works)")
-except Exception as e:
-    print(f"⚠ JAX check failed: {e}")
+print("\nVerifying GPU...")
+import jax
+print(f"JAX devices: {jax.devices()}")
 
-# Extract code
 print("\nExtracting code...")
 subprocess.run(["tar", "xzf", "/root/code.tar.gz", "-C", "/root"], check=True)
 print("✓ Code extracted")
 
-# The first time HSSM runs in this session, it may need to download the
-# MindRL Challenge dataset from HuggingFace. Pre-download it explicitly so
-# run_comparison.py does not fail with a missing-file error.
-print("\nPre-downloading MindRL Challenge dataset from HuggingFace...")
+print("\nPre-downloading dataset...")
 from pathlib import Path
 from huggingface_hub import hf_hub_download
 DATA_DIR = Path("/root/bayesd_misfits/hf_cache/public")
@@ -171,12 +146,8 @@ for filename in [
         print(f"  ✗ {filename}: {type(e).__name__}: {e}")
 print("✓ Dataset ready")
 
-# Run the comparison as a DETACHED background process on the VM.
-# This lets you close your laptop; the job keeps running on Colab's hardware.
 print("\n" + "=" * 60)
-print("Starting model comparison in the background (FULL_RUN=1)...")
-print("You can close your laptop now. Check progress later with:")
-print("   colab exec -s mindrl --timeout 30 -- 'tail -20 /root/run_comparison.log'")
+print(f"Starting background model: {MODEL_NAME!r}")
 print("=" * 60)
 
 os.chdir("/root/bayesd_misfits")
@@ -184,38 +155,38 @@ run_env = os.environ.copy()
 run_env["FULL_RUN"] = "1"
 run_env["PYTHONUNBUFFERED"] = "1"
 
-log_path = "/root/run_comparison.log"
-results_path = "/root/bayesd_misfits/research/model_comparison_results.json"
-
-# Clean up any stale results/log from a previous run
-for f in [log_path, results_path]:
+# Clean up stale log
+for f in [LOG_PATH]:
     try:
         os.remove(f)
     except FileNotFoundError:
         pass
 
 process = subprocess.Popen(
-    [sys.executable, "-u", "research/run_comparison.py"],
+    [sys.executable, "-u", "research/run_single_model.py", MODEL_NAME],
     cwd="/root/bayesd_misfits",
     env=run_env,
-    stdout=open(log_path, "w"),
+    stdout=open(LOG_PATH, "w"),
     stderr=subprocess.STDOUT,
     start_new_session=True,  # detach from colab exec's process group
 )
 
-print(f"✓ Started background process (pid={process.pid})")
-print(f"✓ Log file: {log_path}")
-print(f"✓ Results will be written to: {results_path}")
-print("\n👉 Use research/colab_poll.sh to check progress and download results.")
+print(f"✓ Started VM background process (pid={process.pid})")
+print(f"✓ Log file: {LOG_PATH}")
+print(f"✓ Results incrementally written to: research/incremental_model_comparison_results.json")
 
 PYTHON_EOF
 
 # ── Step 5: Print next steps ─────────────────────────────────────────────────
 echo ""
-echo "🚀 Comparison is running in the background on Colab."
-echo "   Check live log:  colab exec -s $SESSION --timeout 30 -- 'tail -20 /root/run_comparison.log'"
-echo "   Poll + download: bash research/colab_poll.sh"
+echo "🚀 Model '$MODEL_NAME' is running in the background on Colab."
+echo "   You can close your laptop now."
+echo ""
+echo "   Check live log:  colab exec -s $SESSION --timeout 30 << 'PYEOF'"
+echo "                       with open('$LOG_PATH') as f: print(f.read()[-2000:])"
+echo "                       PYEOF"
+echo "   Poll + download:  bash research/colab_poll_single.sh $MODEL_NAME"
 echo ""
 echo "╔══════════════════════════════════════════════════════════════════════╗"
-echo "║  VM left running. Download + stop with colab_poll.sh              ║"
+echo "║  VM left running. Poll for results with colab_poll_single.sh      ║"
 echo "╚══════════════════════════════════════════════════════════════════════╝"

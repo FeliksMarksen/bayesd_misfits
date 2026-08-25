@@ -1,4 +1,4 @@
-"""Resource-rational N-arm RW learners inspired by Bruckner et al. (2025).
+"""Exploratory resource-depletion RW heuristic inspired by Bruckner et al. (2025).
 
 Bruckner, Nassar, Li & Eppinger (2025, Psychological Review) propose that
 age-related learning differences emerge from a *resource-rational sampling*
@@ -10,10 +10,12 @@ limited, fewer samples are drawn, producing three systematic biases:
 2. **Perseveration** — fewer samples → noisier beliefs → stick to previous choice
 3. **Anchoring** — fewer samples → beliefs stay close to the prior
 
-This module implements the first two (anchoring to an external value is not
-identifiable in a bandit without an explicit anchor manipulation).  The
-resource level ``rho`` is trial-varying (cognitive fatigue within a session),
-which breaks collinearity with the base parameters at population level:
+The published model derives these effects from a within-update sampling
+process.  This module does **not** implement that sampling process.  It tests a
+simpler, additional hypothesis that resources decline across a task trajectory
+and directly modulate learning and stickiness.  It must therefore be described
+as an exploratory fatigue heuristic rather than a faithful implementation of
+the paper.  The trial-varying resource level is:
 
     rho_t = 1 / (1 + fatigue_rate * t)
     alpha_eff = alpha_base * rho_t                        # less resource → slower learning

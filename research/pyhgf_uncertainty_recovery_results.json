@@ -1,0 +1,161 @@
+{
+  "seed": 20260808,
+  "n_train_trajectories": 12,
+  "n_validation_trajectories": 12,
+  "n_trials": 120,
+  "n_optimization_starts": 3,
+  "method": "population maximum likelihood with L-BFGS-B",
+  "uses_full_schedules": "simulation only; candidate updates are chosen-feedback only",
+  "results": {
+    "value_only": {
+      "generating_parameters": {
+        "ghgf_omega": -3.0,
+        "beta": 4.0,
+        "uncertainty_weight": 0.0,
+        "repetition_weight": 0.0
+      },
+      "validation_winner": "uncertainty",
+      "candidates": {
+        "value_only": {
+          "success": false,
+          "message": "ABNORMAL: ",
+          "n_iterations": 8,
+          "estimates": {
+            "ghgf_omega": -2.9017630367868676,
+            "beta": 4.405308072766769
+          },
+          "train_nll": 1.1966195848253038,
+          "validation_nll": 1.2483637491861979,
+          "bic": 3460.809201082015
+        },
+        "uncertainty": {
+          "success": true,
+          "message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+          "n_iterations": 15,
+          "estimates": {
+            "ghgf_omega": -2.9604352476256284,
+            "beta": 4.376398810901598,
+            "uncertainty_weight": -0.18785040126301825
+          },
+          "train_nll": 1.1962145487467448,
+          "validation_nll": 1.2482062445746527,
+          "bic": 3466.9150955683353
+        },
+        "uncertainty_repetition": {
+          "success": false,
+          "message": "ABNORMAL: ",
+          "n_iterations": 12,
+          "estimates": {
+            "ghgf_omega": -2.9252609727911354,
+            "beta": 4.273319879174514,
+            "uncertainty_weight": -0.05070600151661844,
+            "repetition_weight": 0.11607744852452219
+          },
+          "train_nll": 1.1952549404568142,
+          "validation_nll": 1.2501254611545138,
+          "bic": 3471.423822085905
+        }
+      }
+    },
+    "uncertainty_averse": {
+      "generating_parameters": {
+        "ghgf_omega": -2.0,
+        "beta": 3.0,
+        "uncertainty_weight": -1.5,
+        "repetition_weight": 0.0
+      },
+      "validation_winner": "uncertainty",
+      "candidates": {
+        "value_only": {
+          "success": false,
+          "message": "ABNORMAL: ",
+          "n_iterations": 6,
+          "estimates": {
+            "ghgf_omega": -0.34368803378435514,
+            "beta": 3.2322050059883476
+          },
+          "train_nll": 1.2317553202311198,
+          "validation_nll": 1.2568547566731771,
+          "bic": 3562.000119050765
+        },
+        "uncertainty": {
+          "success": true,
+          "message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+          "n_iterations": 11,
+          "estimates": {
+            "ghgf_omega": -1.709610103672804,
+            "beta": 2.901395217220399,
+            "uncertainty_weight": -1.5545775901719412
+          },
+          "train_nll": 1.1316246880425347,
+          "validation_nll": 1.2055926852756076,
+          "bic": 3280.8962967402103
+        },
+        "uncertainty_repetition": {
+          "success": true,
+          "message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+          "n_iterations": 16,
+          "estimates": {
+            "ghgf_omega": -1.7121504658227988,
+            "beta": 2.8648462386812046,
+            "uncertainty_weight": -1.4852350052404952,
+            "repetition_weight": 0.0665289490429575
+          },
+          "train_nll": 1.1312815348307292,
+          "validation_nll": 1.2075855678982206,
+          "bic": 3287.18041388278
+        }
+      }
+    },
+    "diagnostic_like_combined": {
+      "generating_parameters": {
+        "ghgf_omega": -1.0,
+        "beta": 0.2,
+        "uncertainty_weight": -0.9,
+        "repetition_weight": 1.7
+      },
+      "validation_winner": "uncertainty_repetition",
+      "candidates": {
+        "value_only": {
+          "success": true,
+          "message": "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL",
+          "n_iterations": 1,
+          "estimates": {
+            "ghgf_omega": -8.0,
+            "beta": 0.0
+          },
+          "train_nll": 1.38629396226671,
+          "validation_nll": 1.38629396226671,
+          "bic": 4007.071408113265
+        },
+        "uncertainty": {
+          "success": true,
+          "message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+          "n_iterations": 14,
+          "estimates": {
+            "ghgf_omega": -2.6581814299726902,
+            "beta": 1.1964226077096312,
+            "uncertainty_weight": -4.909398814380191
+          },
+          "train_nll": 0.9405128479003906,
+          "validation_nll": 0.8671284993489583,
+          "bic": 2730.4941971308353
+        },
+        "uncertainty_repetition": {
+          "success": true,
+          "message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+          "n_iterations": 20,
+          "estimates": {
+            "ghgf_omega": -0.5423058048812962,
+            "beta": 0.4244030652050266,
+            "uncertainty_weight": -0.7286686732040049,
+            "repetition_weight": 1.6696551610111718
+          },
+          "train_nll": 0.7833506266276041,
+          "validation_nll": 0.700557623969184,
+          "bic": 2285.13939825778
+        }
+      }
+    }
+  }
+}

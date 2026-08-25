@@ -1,0 +1,96 @@
+{
+  "run_type": "incremental",
+  "note": "Results built one model at a time via run_single_model.py",
+  "seed": 20260719,
+  "sampler": "numpyro",
+  "chains": 4,
+  "tune": 1000,
+  "draws": 1000,
+  "posterior_draws_for_scoring": 500,
+  "n_train": 100,
+  "n_valid": 300,
+  "full_run": false,
+  "results": {
+    "CausalScaleSticky": {
+      "status": "ok",
+      "eligible": true,
+      "heldout_nll_mean": 0.6941437790738562,
+      "heldout_nll_sd": 1.0789711663094048,
+      "heldout_nll_se": 0.00568667735864342,
+      "heldout_nll_q03": 0.010235086833141125,
+      "heldout_nll_q97": 3.6642754353629563,
+      "heldout_total_nll": 24989.17604665882,
+      "diagnostics": {
+        "pass": true,
+        "failures": [],
+        "divergences": 0,
+        "max_rhat": 1.0071348724048468,
+        "min_bulk_ess": 732.7644321204518,
+        "min_bfmi": 0.657846376010164,
+        "checked_variables": [
+          "rl_alpha_neg_1|participant_id_sigma",
+          "rl_alpha_pos_1|participant_id_sigma",
+          "rl_alpha_neg_Intercept",
+          "repetition_weight_1|participant_id_sigma",
+          "repetition_weight_Intercept",
+          "beta_Intercept",
+          "rl_alpha_pos_Intercept",
+          "beta_1|participant_id_sigma"
+        ]
+      },
+      "population_parameters": {
+        "rl_alpha_pos": {
+          "mean": 0.730884656650591,
+          "sd": 0.030661503059975663,
+          "q03": 0.671944726740166,
+          "q97": 0.7884348365160448
+        },
+        "rl_alpha_neg": {
+          "mean": 0.7104812370523489,
+          "sd": 0.046631837327371056,
+          "q03": 0.6215859405401835,
+          "q97": 0.7938041205068002
+        },
+        "beta": {
+          "mean": 1.5025297930342487,
+          "sd": 0.05350256381706318,
+          "q03": 1.4055900933005443,
+          "q97": 1.606039954528831
+        },
+        "repetition_weight": {
+          "mean": 1.3713398394263605,
+          "sd": 0.10256455367216143,
+          "q03": 1.1784254111736865,
+          "q97": 1.5700180393199366
+        }
+      },
+      "parameter_bounds": {
+        "rl_alpha_pos": [
+          0.0,
+          1.0
+        ],
+        "rl_alpha_neg": [
+          0.0,
+          1.0
+        ],
+        "beta": [
+          0.0,
+          15.0
+        ],
+        "repetition_weight": [
+          -5.0,
+          5.0
+        ]
+      }
+    }
+  },
+  "split": {
+    "available_complete_trajectories": 1981,
+    "available_subjects": 662,
+    "train_trajectories": 100,
+    "validation_trajectories": 300,
+    "train_rows": 12000,
+    "validation_rows": 36000,
+    "subject_overlap": 0
+  }
+}

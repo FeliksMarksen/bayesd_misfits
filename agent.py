@@ -1,23 +1,28 @@
-"""
-MindRL Challenge — Bayes'd Misfits submission agent.
+"""MindRL Challenge — Bayes'd Misfits submission agent.
 
-This module defines the public ``Agent`` class the evaluator imports and calls.
-It implements the fitted Dual-Alpha + Sticky reinforcement-learning model while
-keeping the public API stable:
+Scale-free Causal Sampling Bandit with Bayesian Mutation Sampling (BMS),
+Beta-prior conservatism, and a gradual choice trace.
 
-    class Agent:
-        def __init__(self, config=None)
-        def reset(self, context)
-        def predict(self, history) -> dict      # {"action_probs": {action: prob}}
-        def update(self, action, reward, info=None)
+The evaluator calls ``predict`` before revealing the current trial's outcome
+and calls ``update`` afterwards.
 
-Hard invariants the evaluator enforces:
-  * ``predict`` returns ``{"action_probs": {...}}`` (optionally ``"rt_ms"``).
-  * Probabilities are non-negative and sum to 1.0.
-  * Keys are the exact action labels from ``context["available_actions"]``.
-  * Every valid action is a key; no extras, no missing.
-  * ``history`` contains only PAST trials — never peek at the current outcome.
-  * ``reset`` is called once per trajectory; ``__init__`` once overall.
+Cognitive Architecture:
+1. Hypothesis Space & Resource-Rational Sampling:
+   The agent represents hypotheses about the latent values of the four bandit arms
+   as discrete standardized z-score levels {-2, -1, 0, 1, 2}.  Rather than exact
+   point estimation or infinite-precision smoothing, it runs an ensemble of M=32
+2. Dirichlet-Prior Conservatism:
+   Choice probabilities are regularized by a symmetric Dirichlet(prior_beta)
+   prior on sample frequencies: log(counts + prior_beta).  This categorical
+   generalization of the BMS Beta prior prevents spurious extremes and models
+   human conservatism from first principles (Kolvoort et al., 2023).
+   A decaying choice trace captures motor inertia across consecutive trials:
+   trace_t = trace_{t-1} + choice_trace_rate * (one_hot(action) - trace_{t-1}).
+4. Scale-Invariance:
+   Rewards remain in their raw units and are standardized causally using only
+   rewards already revealed in the current trajectory (Welford's one-pass algorithm).
+   Adding a constant to all rewards or multiplying them by a positive constant
+   does not change the predicted action probabilities.
 """
 
 from __future__ import annotations
@@ -26,9 +31,11 @@ from collections.abc import Mapping, Sequence
 import math
 from typing import Any
 
+import numpy as np
+
 
 def get_field(obj: Any, name: str, default: Any = None) -> Any:
-    """Read ``name`` from a mapping or arbitrary object (e.g. dataclass)."""
+    """Read ``name`` from a mapping or arbitrary object such as a dataclass."""
     if obj is None:
         return default
     if isinstance(obj, Mapping):
@@ -40,185 +47,265 @@ def normalize_probs(probs: dict[Any, float]) -> dict[Any, float]:
     """Return a copy of ``probs`` with non-negative values summing to 1."""
     if not probs:
         return {}
-    clipped = {a: max(0.0, float(p)) for a, p in probs.items()}
+    clipped = {action: max(0.0, float(prob)) for action, prob in probs.items()}
     total = sum(clipped.values())
-    if total <= 0.0:
-        n = len(clipped)
-        u = 1.0 / n if n else 0.0
-        return {a: u for a in clipped}
-    return {a: p / total for a, p in clipped.items()}
+    if not math.isfinite(total) or total <= 0.0:
+        uniform = 1.0 / len(clipped)
+        return {action: uniform for action in clipped}
+    return {action: prob / total for action, prob in clipped.items()}
 
 
-def _as_history_list(history: Any) -> list[Any]:
-    if history is None:
-        return []
-    if isinstance(history, (str, bytes)):
-        return []
-    if isinstance(history, Sequence) and not isinstance(history, (str, bytes)):
-        try:
-            return list(history)
-        except TypeError:
-            return []
-    return []
-
-
-def _default_actions() -> list[Any]:
-    return [1, 2, 3, 4]
+def _default_actions() -> list[int]:
+    return [0, 1, 2, 3]
 
 
 class Agent:
-    """
-    Dual-Alpha + Sticky RL submission agent with optional resource-rational
-    extensions inspired by Bruckner et al. (2025, Psychological Review).
-
-    Maintains action values updated via positive/negative learning rates,
-    applies a choice-stickiness perseveration bonus, and selects options
-    via a softmax choice rule.
-
-    When ``fatigue_rate`` > 0, a trial-varying resource level degrades the
-    effective learning rate and amplifies stickiness over the session —
-    modelling within-session cognitive fatigue.  When ``surprise_gain`` > 0,
-    the learning rate is modulated by prediction-error magnitude, consistent
-    with the paper's "criterion level of accuracy" stopping rule.  Both default
-    to 0, recovering the original Dual-Alpha + Sticky model.
-    """
+    """Scale-free Causal Sampling Bandit with Choice Trace."""
 
     def __init__(self, config: Mapping[str, Any] | Any | None = None) -> None:
         self._config = config or {}
         model = get_field(self._config, "model", default={}) or {}
-        
-        # Load hyperparameters from config (defaulting to converged fit)
-        self._rl_alpha_pos = float(get_field(model, "rl_alpha_pos", 0.380))
-        self._rl_alpha_neg = float(get_field(model, "rl_alpha_neg", 0.763))
-        self._sticky = float(get_field(model, "sticky", 0.126))
-        self._beta = float(get_field(model, "beta", 8.331))
-        self._initial_q = float(get_field(model, "initial_q", 0.5))
-        self._reward_scale = float(get_field(model, "reward_scale", 1.0))
-        if not math.isfinite(self._reward_scale) or self._reward_scale <= 0.0:
-            raise ValueError("model.reward_scale must be a positive finite number")
 
-        # --- Resource-rational extensions (Bruckner et al. 2025) -----------
-        # All default to 0 → exact backward compatibility with the original model.
-        self._fatigue_rate = float(get_field(model, "fatigue_rate", 0.0))
-        self._sticky_gain = float(get_field(model, "sticky_gain", 0.0))
-        self._surprise_gain = float(get_field(model, "surprise_gain", 0.0))
+        # Fitted population parameters
+        self._prior_beta = float(get_field(model, "prior_beta", 1.134684))
+        self._temperature = float(get_field(model, "temperature", 0.415717))
+        self._repetition_weight = float(
+            get_field(model, "repetition_weight", 3.170215)
+        )
+        self._choice_trace_rate = float(
+            get_field(model, "choice_trace_rate", 0.412275)
+        )
+
+        # Process hyperparameters
+        self._n_samples = int(get_field(model, "n_samples", 10))
+        self._n_particles = int(get_field(model, "n_particles", 32))
+        self._obs_sigma = float(get_field(model, "obs_sigma", 0.1))
+        self._forgetting = float(get_field(model, "forgetting", 0.98))
+        self._n_levels = int(get_field(model, "n_levels", 5))
+
+        # Parameter validation
+        if not math.isfinite(self._prior_beta) or self._prior_beta < 0.0:
+            raise ValueError("model.prior_beta must be finite and non-negative")
+        if not math.isfinite(self._temperature) or self._temperature <= 0.0:
+            raise ValueError("model.temperature must be finite and positive")
+        if not math.isfinite(self._repetition_weight):
+            raise ValueError("model.repetition_weight must be finite")
+        if self._n_levels < 2:
+            raise ValueError("model.n_levels must be at least 2")
+        if (
+            not math.isfinite(self._choice_trace_rate)
+            or not 0.0 <= self._choice_trace_rate <= 1.0
+        ):
+            raise ValueError("model.choice_trace_rate must be in [0, 1]")
+        if self._n_samples < 1:
+            raise ValueError("model.n_samples must be at least 1")
+        if self._n_particles < 1:
+            raise ValueError("model.n_particles must be at least 1")
+        if not math.isfinite(self._obs_sigma) or self._obs_sigma <= 0.0:
+            raise ValueError("model.obs_sigma must be positive")
+        if not 0.0 < self._forgetting <= 1.0:
+            raise ValueError("model.forgetting must be in (0, 1]")
+
+        self._level_values = np.linspace(
+            -2.0, 2.0, self._n_levels, dtype=np.float64
+        )
+        seed = get_field(model, "seed", 2026)
+        self._rng = np.random.default_rng(seed)
 
         self._available_actions: list[Any] = []
-        self._q: dict[Any, float] = {}
+        self._action_to_idx: dict[Any, int] = {}
+        self._idx_to_action: dict[int, Any] = {}
+
+        # Trajectory-local dynamic state
+        self._levels: np.ndarray | None = None
+        self._counts: np.ndarray | None = None
+        self._choice_trace: np.ndarray | None = None
+        self._n: np.ndarray | None = None
+        self._S: np.ndarray | None = None
+        self._SS: np.ndarray | None = None
         self._last_choice: Any = None
         self._history_len = 0
+        self._reward_count = 0
+        self._reward_mean = 0.0
+        self._reward_m2 = 0.0
 
-    def _resource_level(self, trial: int) -> float:
-        """Trial-varying cognitive resource level rho_t in (0, 1].
+    def _clear_trajectory_state(self) -> None:
+        n_actions = len(self._available_actions)
+        mid = self._n_levels // 2
+        self._levels = np.full(
+            (self._n_particles, n_actions), mid, dtype=np.int64
+        )
+        self._counts = np.ones(n_actions, dtype=np.float64)
+        self._choice_trace = np.zeros(n_actions, dtype=np.float64)
+        self._n = np.zeros(n_actions, dtype=np.float64)
+        self._S = np.zeros(n_actions, dtype=np.float64)
+        self._SS = np.zeros(n_actions, dtype=np.float64)
+        self._last_choice = None
+        self._history_len = 0
+        self._reward_count = 0
+        self._reward_mean = 0.0
+        self._reward_m2 = 0.0
 
-        rho_t = 1 / (1 + fatigue_rate * t)
-        At t=0, rho=1 (full resources).  As t grows, rho → 0 (depleted).
-        When fatigue_rate == 0, rho is always 1 (no fatigue).
-        """
-        if self._fatigue_rate <= 0.0:
-            return 1.0
-        return 1.0 / (1.0 + self._fatigue_rate * trial)
-
-    def _effective_alpha(self, pe: float, trial: int) -> float:
-        """Compute the resource- and surprise-adjusted learning rate."""
-        rho = self._resource_level(trial)
-        base = self._rl_alpha_pos if pe >= 0.0 else self._rl_alpha_neg
-        alpha = base * rho
-        if self._surprise_gain > 0.0:
-            alpha *= 1.0 + self._surprise_gain * abs(pe)
-        return min(alpha, 0.9999)
-
-    def _effective_sticky(self, trial: int) -> float:
-        """Compute the resource-adjusted stickiness bonus."""
-        rho = self._resource_level(trial)
-        return self._sticky + self._sticky_gain * (1.0 - rho)
-
-    def reset(self, context: Mapping[str, Any] | Any) -> None:
+    def reset(self, context: Mapping[str, Any] | Any | None = None) -> None:
         actions = get_field(context, "available_actions", default=None)
-        if actions is None:
-            actions = []
         try:
-            self._available_actions = list(actions) if actions is not None else []
+            self._available_actions = (
+                list(actions) if actions is not None else []
+            )
         except TypeError:
             self._available_actions = []
         if not self._available_actions:
-            self._available_actions = list(_default_actions())
-            
-        # Re-initialize action values and choice history
-        self._q = {a: self._initial_q for a in self._available_actions}
-        self._last_choice = None
-        self._history_len = 0
+            self._available_actions = _default_actions()
 
-    def _normalize_reward(self, reward: Any) -> float:
-        """Convert evaluator rewards to the 0-1 scale used during fitting."""
-        return float(reward) / self._reward_scale
+        self._action_to_idx = {
+            act: i for i, act in enumerate(self._available_actions)
+        }
+        self._idx_to_action = {
+            i: act for i, act in enumerate(self._available_actions)
+        }
+        self._clear_trajectory_state()
 
-    def predict(self, history: Any) -> dict[str, dict[Any, float]]:
-        actions = list(self._available_actions)
-        if not actions:
-            return {"action_probs": {}}
+    def _log_likelihood(self, levels: np.ndarray) -> np.ndarray:
+        safe_levels = np.clip(levels, 0, self._n_levels - 1)
+        v = self._level_values[safe_levels]
+        resid = self._SS - 2.0 * v * self._S + self._n * v * v
+        masked = np.where(self._n > 0.0, resid, 0.0)
+        return -0.5 * np.sum(masked, axis=-1) / (self._obs_sigma**2)
 
-        hist = _as_history_list(history)
+    def _mutation_chain_ensemble(self) -> tuple[np.ndarray, np.ndarray]:
+        n_actions = len(self._available_actions)
+        levels = self._levels.copy()
+        counts = np.zeros((self._n_particles, n_actions), dtype=np.float64)
+        max_level = levels.max(axis=1, keepdims=True)
+        is_best = levels == max_level
+        counts += is_best / is_best.sum(axis=1, keepdims=True)
 
-        if len(hist) != self._history_len:
-            # Reconstruct state from history (must mirror update() exactly)
-            q = {a: self._initial_q for a in actions}
-            last_choice = None
-            trial_idx = 0
-            
-            for trial in hist:
-                act = get_field(trial, "action", default=None)
-                rew = get_field(trial, "reward", default=None)
-                if act is not None and act in q and rew is not None:
-                    try:
-                        r = self._normalize_reward(rew)
-                        pe = r - q[act]
-                        alpha = self._effective_alpha(pe, trial_idx)
-                        q[act] += alpha * pe
-                        last_choice = act
-                        trial_idx += 1
-                    except (TypeError, ValueError):
-                        pass
-            self._q = q
-            self._last_choice = last_choice
-            self._history_len = len(hist)
+        curr_ll = self._log_likelihood(levels)
+        idx = np.arange(self._n_particles)
+        for _ in range(self._n_samples - 1):
+            arms = self._rng.integers(0, n_actions, size=self._n_particles)
+            directions = self._rng.choice([-1, 1], size=self._n_particles)
+            proposed = levels.copy()
+            proposed[idx, arms] += directions
+            valid = (proposed[idx, arms] >= 0) & (
+                proposed[idx, arms] < self._n_levels
+            )
 
-        values = {}
-        sticky_eff = self._effective_sticky(self._history_len)
-        for a in actions:
-            val = self._q[a]
-            if self._last_choice is not None and a == self._last_choice:
-                # Q-scale perseveration bonus; its logit contribution is beta * sticky_eff.
-                val += sticky_eff
-            values[a] = val
+            prop_ll = self._log_likelihood(proposed)
+            log_ratio = prop_ll - curr_ll
+            accept = valid & (
+                self._rng.random(size=self._n_particles)
+                < np.exp(np.minimum(0.0, log_ratio))
+            )
 
-        # Numerically stable softmax (shift by max so exp never overflows)
-        max_val = max(values.values())
-        exp_vals = {}
-        for a in actions:
-            exp_vals[a] = math.exp(self._beta * (values[a] - max_val))
+            levels = np.where(accept[:, None], proposed, levels)
+            curr_ll = np.where(accept, prop_ll, curr_ll)
 
-        # Tiny floor so no probability is exactly zero (avoids -inf log-loss)
-        floored = {a: max(1e-5, exp_vals[a]) for a in actions}
-        return {"action_probs": normalize_probs(floored)}
+            max_level = levels.max(axis=1, keepdims=True)
+            is_best = levels == max_level
+            counts += is_best / is_best.sum(axis=1, keepdims=True)
 
-    def _uniform_distribution(self, actions: list[Any]) -> dict[Any, float]:
-        n = len(actions)
-        if n == 0:
-            return {}
-        base = 1.0 / n
-        floored = {a: max(1e-5, base) for a in actions}
-        return normalize_probs(floored)
+        return levels, counts.mean(axis=0)
 
-    def update(self, action: Any, reward: Any, info: Any | None = None) -> None:
-        if action not in self._q or reward is None:
+    def _apply_observation(self, action: Any, reward: Any) -> None:
+        if action not in self._action_to_idx:
+            return
+        idx = self._action_to_idx[action]
+        self._last_choice = action
+
+        # 1. Update gradual choice trace
+        n_actions = len(self._available_actions)
+        target = np.zeros(n_actions, dtype=np.float64)
+        target[idx] = 1.0
+        self._choice_trace = self._choice_trace + self._choice_trace_rate * (
+            target - self._choice_trace
+        )
+
+        if reward is None:
+            self._history_len += 1
             return
         try:
-            r = self._normalize_reward(reward)
-            pe = r - self._q[action]                       # prediction error
-            alpha = self._effective_alpha(pe, self._history_len)
-            self._q[action] += alpha * pe                 # the one learning line
-            self._last_choice = action                     # sticky bonus uses this next step
-            self._history_len += 1
+            observed_reward = float(reward)
         except (TypeError, ValueError):
-            pass
+            self._history_len += 1
+            return
+        if not math.isfinite(observed_reward):
+            self._history_len += 1
+            return
+
+        # 2. Causal standardization using pre-reward running statistics
+        if self._reward_count >= 2 and self._reward_m2 > 0.0:
+            sd = math.sqrt(self._reward_m2 / (self._reward_count - 1))
+            z = (
+                (observed_reward - self._reward_mean) / sd
+                if (math.isfinite(sd) and sd > 0.0)
+                else 0.0
+            )
+        else:
+            z = 0.0
+
+        # 3. Exponential decay of sufficient statistics
+        self._n *= self._forgetting
+        self._S *= self._forgetting
+        self._SS *= self._forgetting
+        self._n[idx] += 1.0
+        self._S[idx] += z
+        self._SS[idx] += z * z
+
+        # 4. Welford running update
+        new_count = self._reward_count + 1
+        delta = observed_reward - self._reward_mean
+        new_mean = self._reward_mean + delta / new_count
+        self._reward_m2 = max(
+            self._reward_m2 + delta * (observed_reward - new_mean), 0.0
+        )
+        self._reward_mean = new_mean
+        self._reward_count = new_count
+
+        # 5. Run mutation chain ensemble
+        self._levels, self._counts = self._mutation_chain_ensemble()
+        self._history_len += 1
+
+    def update(
+        self,
+        action: Any,
+        reward: Any,
+        info: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        del info, kwargs
+        self._apply_observation(action, reward)
+    def predict(self, history: Any = None) -> dict[str, Any]:
+        if not self._available_actions:
+            self._available_actions = _default_actions()
+            self._action_to_idx = {
+                act: i for i, act in enumerate(self._available_actions)
+            }
+            self._idx_to_action = {
+                i: act for i, act in enumerate(self._available_actions)
+            }
+            self._clear_trajectory_state()
+
+        if history is not None:
+            hist_list = list(history) if isinstance(history, Sequence) else []
+            if len(hist_list) > self._history_len:
+                for item in hist_list[self._history_len:]:
+                    act = get_field(item, "action", default=None)
+                    rew = get_field(item, "reward", default=None)
+                    self._apply_observation(act, rew)
+
+        n_actions = len(self._available_actions)
+        sampling_logits = self._temperature * np.log(
+            self._counts + self._prior_beta + 1e-12
+        )
+        trace_logits = self._repetition_weight * self._choice_trace
+        logits = sampling_logits + trace_logits
+        logits -= logits.max()
+        probs = np.exp(logits)
+        probs /= probs.sum()
+
+        prob_dict = {
+            self._idx_to_action[i]: float(probs[i]) for i in range(n_actions)
+        }
+        return {"action_probs": prob_dict}
+

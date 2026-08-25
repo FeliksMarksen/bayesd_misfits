@@ -1,0 +1,37 @@
+{
+  "seed": 20260719,
+  "parameters": {
+    "name": "causal_scale_dual_alpha_sticky_rl",
+    "type": "cognitive_rl_model",
+    "rl_alpha_pos": 0.730885,
+    "rl_alpha_neg": 0.710481,
+    "beta": 1.50253,
+    "repetition_weight": 1.37134,
+    "reward_normalization": {
+      "method": "causal_running_standardization",
+      "scope": "trajectory",
+      "variance": "sample",
+      "unseen_action_prior": "running_reward_mean",
+      "zero_variance_value": 0.0
+    }
+  },
+  "split": {
+    "available_complete_trajectories": 1981,
+    "available_subjects": 662,
+    "train_trajectories": 100,
+    "validation_trajectories": 300,
+    "train_rows": 12000,
+    "validation_rows": 36000,
+    "subject_overlap": 0
+  },
+  "evaluation": {
+    "nll": 0.6943867188691594,
+    "accuracy": 0.7591666666666667,
+    "num_trials": 36000,
+    "num_trajectories": 300
+  },
+  "affine_invariance_check": {
+    "transformation": "10 * reward + 500",
+    "max_absolute_probability_difference": 1.7819079545233762e-13
+  }
+}

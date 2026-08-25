@@ -1,0 +1,340 @@
+{
+  "run_type": "incremental",
+  "note": "Results built one model at a time via run_single_model.py",
+  "seed": 20260719,
+  "sampler": "numpyro",
+  "chains": 2,
+  "tune": 500,
+  "draws": 500,
+  "posterior_draws_for_scoring": 200,
+  "n_train": 20,
+  "n_valid": 60,
+  "full_run": false,
+  "results": {
+    "PyHGF": {
+      "status": "ok",
+      "eligible": true,
+      "heldout_nll_mean": 1.392063035906343,
+      "heldout_nll_sd": 0.006435723711853389,
+      "heldout_nll_se": 7.584573130824316e-05,
+      "heldout_nll_q03": 1.3775154766516435,
+      "heldout_nll_q97": 1.4003858622984635,
+      "heldout_total_nll": 10022.85385852567,
+      "diagnostics": {
+        "pass": true,
+        "failures": [],
+        "divergences": 0,
+        "max_rhat": 1.0039945355657907,
+        "min_bulk_ess": 829.5122885205808,
+        "min_bfmi": 0.8722801456723944,
+        "checked_variables": [
+          "beta_Intercept",
+          "beta_1|participant_id_sigma",
+          "ghgf_omega_1|participant_id_sigma",
+          "ghgf_omega_Intercept"
+        ]
+      },
+      "population_parameters": {
+        "ghgf_omega": {
+          "mean": -4.166722598445415,
+          "sd": 0.9462120599074971,
+          "q03": -5.844299558990377,
+          "q97": -2.391738902740974
+        },
+        "beta": {
+          "mean": 0.03725304605226687,
+          "sd": 0.008650093419998887,
+          "q03": 0.0233421262390889,
+          "q97": 0.05552958306801854
+        }
+      },
+      "parameter_bounds": {
+        "ghgf_omega": [
+          -8.0,
+          0.0
+        ],
+        "beta": [
+          0.0,
+          15.0
+        ]
+      }
+    },
+    "PyHGF+Sticky": {
+      "status": "ok",
+      "eligible": false,
+      "heldout_nll_mean": 0.7786576561540247,
+      "heldout_nll_sd": 1.061233405772788,
+      "heldout_nll_se": 0.012506755627393888,
+      "heldout_nll_q03": 0.15842609495684978,
+      "heldout_nll_q97": 3.139711783833955,
+      "heldout_total_nll": 5606.335124308978,
+      "diagnostics": {
+        "pass": false,
+        "failures": [
+          "max R-hat 1.021 > 1.01"
+        ],
+        "divergences": 0,
+        "max_rhat": 1.0211918996507012,
+        "min_bulk_ess": 188.35162282765714,
+        "min_bfmi": 0.8634312061072748,
+        "checked_variables": [
+          "sticky_Intercept",
+          "ghgf_omega_1|participant_id_sigma",
+          "ghgf_omega_Intercept",
+          "beta_1|participant_id_sigma",
+          "sticky_1|participant_id_sigma",
+          "beta_Intercept"
+        ]
+      },
+      "population_parameters": {
+        "ghgf_omega": {
+          "mean": -6.245269305747001,
+          "sd": 0.5711486447427016,
+          "q03": -7.136736199425796,
+          "q97": -5.035714765164175
+        },
+        "sticky": {
+          "mean": 2.48687443546862,
+          "sd": 0.0791928961485188,
+          "q03": 2.3223053054088236,
+          "q97": 2.626990444164516
+        },
+        "beta": {
+          "mean": 1.0941653260945654,
+          "sd": 0.08291398529516147,
+          "q03": 0.9496271234781217,
+          "q97": 1.2500786712464138
+        }
+      },
+      "parameter_bounds": {
+        "ghgf_omega": [
+          -8.0,
+          0.0
+        ],
+        "sticky": [
+          -3.0,
+          3.0
+        ],
+        "beta": [
+          0.0,
+          15.0
+        ]
+      }
+    },
+    "Sticky": {
+      "status": "ok",
+      "eligible": false,
+      "heldout_nll_mean": 0.5526299384643517,
+      "heldout_nll_sd": 0.887489376406166,
+      "heldout_nll_se": 0.010459162604797005,
+      "heldout_nll_q03": 0.016874180741761897,
+      "heldout_nll_q97": 3.0746807202772835,
+      "heldout_total_nll": 3978.9355569433324,
+      "diagnostics": {
+        "pass": false,
+        "failures": [
+          "max R-hat 1.010 > 1.01"
+        ],
+        "divergences": 0,
+        "max_rhat": 1.0104711858901796,
+        "min_bulk_ess": 217.86891183176573,
+        "min_bfmi": 0.7713105393382553,
+        "checked_variables": [
+          "beta_1|participant_id_sigma",
+          "sticky_Intercept",
+          "rl_alpha_neg_1|participant_id_sigma",
+          "rl_alpha_neg_Intercept",
+          "beta_Intercept",
+          "rl_alpha_pos_1|participant_id_sigma",
+          "rl_alpha_pos_Intercept",
+          "sticky_1|participant_id_sigma"
+        ]
+      },
+      "population_parameters": {
+        "rl_alpha_pos": {
+          "mean": 0.46398154718045964,
+          "sd": 0.07000235359615638,
+          "q03": 0.34085525070738876,
+          "q97": 0.6000553206198062
+        },
+        "rl_alpha_neg": {
+          "mean": 0.4045469304748018,
+          "sd": 0.0797439850002991,
+          "q03": 0.2677195931154117,
+          "q97": 0.5492748843397036
+        },
+        "sticky": {
+          "mean": 0.12239165525212423,
+          "sd": 0.019381837613028124,
+          "q03": 0.08655003761153092,
+          "q97": 0.15895097470405048
+        },
+        "beta": {
+          "mean": 9.70225908739728,
+          "sd": 0.4559614935223981,
+          "q03": 8.88792189315793,
+          "q97": 10.606428662338953
+        }
+      },
+      "parameter_bounds": {
+        "rl_alpha_pos": [
+          0.0,
+          1.0
+        ],
+        "rl_alpha_neg": [
+          0.0,
+          1.0
+        ],
+        "sticky": [
+          -3.0,
+          3.0
+        ],
+        "beta": [
+          0.0,
+          15.0
+        ]
+      }
+    },
+    "PyHGF+Uncertainty": {
+      "status": "ok",
+      "eligible": true,
+      "heldout_nll_mean": 0.7548300459725874,
+      "heldout_nll_sd": 1.0126400428012912,
+      "heldout_nll_se": 0.01193407735276381,
+      "heldout_nll_q03": 0.001602555222963069,
+      "heldout_nll_q97": 3.3837621888594365,
+      "heldout_total_nll": 5434.776331002629,
+      "diagnostics": {
+        "pass": true,
+        "failures": [],
+        "divergences": 0,
+        "max_rhat": 1.007574631288502,
+        "min_bulk_ess": 231.01672204130927,
+        "min_bfmi": 0.7601532028234288,
+        "checked_variables": [
+          "ghgf_omega_1|participant_id_sigma",
+          "beta_1|participant_id_sigma",
+          "beta_Intercept",
+          "uncertainty_weight_Intercept",
+          "uncertainty_weight_1|participant_id_sigma",
+          "ghgf_omega_Intercept"
+        ]
+      },
+      "population_parameters": {
+        "ghgf_omega": {
+          "mean": -1.4421467206034357,
+          "sd": 0.27654198880624004,
+          "q03": -1.9983160641903726,
+          "q97": -0.9465043225731758
+        },
+        "beta": {
+          "mean": 0.16102173938763395,
+          "sd": 0.042068887434358354,
+          "q03": 0.09486159431671243,
+          "q97": 0.24543142640849508
+        },
+        "uncertainty_weight": {
+          "mean": -2.6393341633702483,
+          "sd": 0.3419475778153948,
+          "q03": -3.411235812523074,
+          "q97": -2.118327289103209
+        }
+      },
+      "parameter_bounds": {
+        "ghgf_omega": [
+          -8.0,
+          0.0
+        ],
+        "beta": [
+          0.0,
+          15.0
+        ],
+        "uncertainty_weight": [
+          -10.0,
+          10.0
+        ]
+      }
+    },
+    "PyHGF+Uncertainty+Sticky": {
+      "status": "ok",
+      "eligible": true,
+      "heldout_nll_mean": 0.6709571354001643,
+      "heldout_nll_sd": 0.9852023532495883,
+      "heldout_nll_se": 0.01161072108039547,
+      "heldout_nll_q03": 0.0229228696303117,
+      "heldout_nll_q97": 3.071607333131288,
+      "heldout_total_nll": 4830.891374881183,
+      "diagnostics": {
+        "pass": true,
+        "failures": [],
+        "divergences": 0,
+        "max_rhat": 1.0022694960524339,
+        "min_bulk_ess": 364.9834849534405,
+        "min_bfmi": 0.7674774335791569,
+        "checked_variables": [
+          "repetition_weight_Intercept",
+          "beta_Intercept",
+          "uncertainty_weight_Intercept",
+          "ghgf_omega_1|participant_id_sigma",
+          "uncertainty_weight_1|participant_id_sigma",
+          "ghgf_omega_Intercept",
+          "repetition_weight_1|participant_id_sigma",
+          "beta_1|participant_id_sigma"
+        ]
+      },
+      "population_parameters": {
+        "ghgf_omega": {
+          "mean": -0.9984384258483355,
+          "sd": 0.2545104843310329,
+          "q03": -1.5396600201004966,
+          "q97": -0.5795790299732871
+        },
+        "beta": {
+          "mean": 0.16548318765657064,
+          "sd": 0.04628948868226021,
+          "q03": 0.0930595432073953,
+          "q97": 0.26682289284140875
+        },
+        "uncertainty_weight": {
+          "mean": -0.9054782818943207,
+          "sd": 0.12041565333645454,
+          "q03": -1.1757720019922748,
+          "q97": -0.7122911814741905
+        },
+        "repetition_weight": {
+          "mean": 1.6984639491947997,
+          "sd": 0.11994447286562919,
+          "q03": 1.480984809732392,
+          "q97": 1.9270119901161482
+        }
+      },
+      "parameter_bounds": {
+        "ghgf_omega": [
+          -8.0,
+          0.0
+        ],
+        "beta": [
+          0.0,
+          15.0
+        ],
+        "uncertainty_weight": [
+          -10.0,
+          10.0
+        ],
+        "repetition_weight": [
+          -5.0,
+          5.0
+        ]
+      }
+    }
+  },
+  "split": {
+    "available_complete_trajectories": 1981,
+    "available_subjects": 662,
+    "train_trajectories": 20,
+    "validation_trajectories": 60,
+    "train_rows": 2400,
+    "validation_rows": 7200,
+    "subject_overlap": 0
+  }
+}

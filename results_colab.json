@@ -1,0 +1,94 @@
+{
+  "run_type": "production",
+  "seed": 20260719,
+  "floatX": "float32",
+  "sampler": "numpyro",
+  "chains": 8,
+  "tune": 1500,
+  "draws": 1500,
+  "posterior_draws_for_scoring": 500,
+  "n_trials_per_trajectory": 120,
+  "split": {
+    "available_complete_trajectories": 1981,
+    "available_subjects": 662,
+    "train_trajectories": 100,
+    "validation_trajectories": 300,
+    "train_rows": 12000,
+    "validation_rows": 36000,
+    "subject_overlap": 0
+  },
+  "evaluation": {
+    "data": "held-out trajectories from disjoint human subjects",
+    "parameters": "population intercepts only (no participant random effects)",
+    "metric": "one-step-ahead posterior predictive log-mean-exp NLL"
+  },
+  "diagnostic_thresholds": {
+    "scope": "R-hat/ESS on population intercepts and random-effect scales; divergences/BFMI global",
+    "max_rhat": 1.01,
+    "min_bulk_ess": 1200,
+    "min_bfmi": 0.3,
+    "max_divergences": 0
+  },
+  "hgf_constants": {
+    "obs_precision": 20.0,
+    "initial_mu1": 0.5,
+    "initial_mu2": -1.0,
+    "initial_sigma1": 0.25,
+    "initial_sigma2": 1.0,
+    "theta_var": 0.01,
+    "volatility_update": "unbounded HGF two-expansion update"
+  },
+  "best_model": null,
+  "results": {
+    "RW": {
+      "status": "fit_failed",
+      "eligible": false,
+      "error": "ImportError: cannot import name 'xla_pmap_p' from 'jax.interpreters.pxla' (/usr/local/lib/python3.12/dist-packages/jax/interpreters/pxla.py)"
+    },
+    "RW+Decay": {
+      "status": "fit_failed",
+      "eligible": false,
+      "error": "ImportError: cannot import name 'xla_pmap_p' from 'jax.interpreters.pxla' (/usr/local/lib/python3.12/dist-packages/jax/interpreters/pxla.py)"
+    },
+    "DualAlpha": {
+      "status": "fit_failed",
+      "eligible": false,
+      "error": "ImportError: cannot import name 'xla_pmap_p' from 'jax.interpreters.pxla' (/usr/local/lib/python3.12/dist-packages/jax/interpreters/pxla.py)"
+    },
+    "DualAlpha+Decay": {
+      "status": "fit_failed",
+      "eligible": false,
+      "error": "ImportError: cannot import name 'xla_pmap_p' from 'jax.interpreters.pxla' (/usr/local/lib/python3.12/dist-packages/jax/interpreters/pxla.py)"
+    },
+    "RW+Sticky": {
+      "status": "fit_failed",
+      "eligible": false,
+      "error": "ImportError: cannot import name 'xla_pmap_p' from 'jax.interpreters.pxla' (/usr/local/lib/python3.12/dist-packages/jax/interpreters/pxla.py)"
+    },
+    "Sticky": {
+      "status": "fit_failed",
+      "eligible": false,
+      "error": "ImportError: cannot import name 'xla_pmap_p' from 'jax.interpreters.pxla' (/usr/local/lib/python3.12/dist-packages/jax/interpreters/pxla.py)"
+    },
+    "HGF": {
+      "status": "fit_failed",
+      "eligible": false,
+      "error": "ImportError: cannot import name 'xla_pmap_p' from 'jax.interpreters.pxla' (/usr/local/lib/python3.12/dist-packages/jax/interpreters/pxla.py)"
+    },
+    "HGF+Sticky": {
+      "status": "fit_failed",
+      "eligible": false,
+      "error": "ImportError: cannot import name 'xla_pmap_p' from 'jax.interpreters.pxla' (/usr/local/lib/python3.12/dist-packages/jax/interpreters/pxla.py)"
+    },
+    "Resource": {
+      "status": "fit_failed",
+      "eligible": false,
+      "error": "ImportError: cannot import name 'xla_pmap_p' from 'jax.interpreters.pxla' (/usr/local/lib/python3.12/dist-packages/jax/interpreters/pxla.py)"
+    },
+    "RW+Race": {
+      "status": "fit_failed",
+      "eligible": false,
+      "error": "ImportError: cannot import name 'xla_pmap_p' from 'jax.interpreters.pxla' (/usr/local/lib/python3.12/dist-packages/jax/interpreters/pxla.py)"
+    }
+  }
+}

@@ -11,7 +11,7 @@ team:
 submission:
   visibility: internal
   method_family: bayesian_cognitive_model
-  short_description: "Dual-Alpha Rescorla-Wagner with choice stickiness, fitted via hierarchical MCMC."
+  short_description: "Scale-free Causal Sampling Bandit combining Bayesian Mutation Sampling (BMS), Beta-prior conservatism, and a gradual motor choice trace, fitted via hierarchical MCMC."
   repo_url: https://github.com/FeliksMarksen/bayesd_misfits.git
   commit_hash: TODO
   agent_path: agent.py
@@ -20,7 +20,6 @@ submission:
   interpretation_card_path: interpretation_card.md
 
 optional_targets: []
-
 
 runtime_profile:
   execution_type: local_python
@@ -31,11 +30,11 @@ runtime_profile:
   required_secrets: []
   estimated_eval_cost: none
   expected_runtime_minutes: null
-  notes: "Fitted RL agent runs fully inside the evaluator process on CPU."
+  notes: "Fitted cognitive sampling agent runs fully inside the evaluator process on CPU in pure Python/NumPy."
 artifacts:
   hf_checkpoint: null
   external_weights: null
-  notes: "Fitted hyperparameters are shipped in config.yaml."
+  notes: "Fitted population hyperparameters are shipped in config.yaml."
 
 policy:
   ip_owner: submitting_team

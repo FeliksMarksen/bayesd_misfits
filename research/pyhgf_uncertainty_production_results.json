@@ -1,0 +1,96 @@
+{
+  "run_type": "incremental",
+  "note": "Results built one model at a time via run_single_model.py",
+  "seed": 20260719,
+  "sampler": "numpyro",
+  "chains": 4,
+  "tune": 1000,
+  "draws": 1000,
+  "posterior_draws_for_scoring": 500,
+  "n_train": 100,
+  "n_valid": 300,
+  "full_run": true,
+  "results": {
+    "PyHGF+Uncertainty+Sticky": {
+      "status": "ok",
+      "eligible": true,
+      "heldout_nll_mean": 0.7645944904168795,
+      "heldout_nll_sd": 1.0573713940860874,
+      "heldout_nll_se": 0.005572836563365883,
+      "heldout_nll_q03": 0.02098045483698634,
+      "heldout_nll_q97": 3.2497055186377977,
+      "heldout_total_nll": 27525.401655007663,
+      "diagnostics": {
+        "pass": true,
+        "failures": [],
+        "divergences": 0,
+        "max_rhat": 1.0030442931533918,
+        "min_bulk_ess": 1003.8254315919729,
+        "min_bfmi": 0.6630701347802715,
+        "checked_variables": [
+          "repetition_weight_Intercept",
+          "ghgf_omega_1|participant_id_sigma",
+          "beta_Intercept",
+          "beta_1|participant_id_sigma",
+          "uncertainty_weight_1|participant_id_sigma",
+          "repetition_weight_1|participant_id_sigma",
+          "ghgf_omega_Intercept",
+          "uncertainty_weight_Intercept"
+        ]
+      },
+      "population_parameters": {
+        "ghgf_omega": {
+          "mean": -0.3642853753562455,
+          "sd": 0.08123342644086087,
+          "q03": -0.5347745642441581,
+          "q97": -0.22940252531030106
+        },
+        "beta": {
+          "mean": 0.056585795705305815,
+          "sd": 0.01398981455962619,
+          "q03": 0.03351017194675805,
+          "q97": 0.08646266309981301
+        },
+        "uncertainty_weight": {
+          "mean": -0.7757460444552067,
+          "sd": 0.04582531204302063,
+          "q03": -0.8635353179906284,
+          "q97": -0.6944461363785545
+        },
+        "repetition_weight": {
+          "mean": 1.6959560935576672,
+          "sd": 0.07357087381272745,
+          "q03": 1.5607939496026257,
+          "q97": 1.8367964408788071
+        }
+      },
+      "parameter_bounds": {
+        "ghgf_omega": [
+          -8.0,
+          0.0
+        ],
+        "beta": [
+          0.0,
+          15.0
+        ],
+        "uncertainty_weight": [
+          -10.0,
+          10.0
+        ],
+        "repetition_weight": [
+          -5.0,
+          5.0
+        ]
+      }
+    }
+  },
+  "split": {
+    "available_complete_trajectories": 1981,
+    "available_subjects": 662,
+    "train_trajectories": 100,
+    "validation_trajectories": 300,
+    "train_rows": 12000,
+    "validation_rows": 36000,
+    "subject_overlap": 0
+  }
+}

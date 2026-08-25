@@ -1,11 +1,12 @@
 # Bayes'd Misfits — MindRL Challenge runtime + model configuration.
 #
-# The evaluator parses this file and passes it to ``Agent.__init__(config)``.
-# ``runtime`` and ``evaluation`` are challenge-required; ``model`` holds the
-# hyperparameters your agent reads in ``__init__``. The keys under ``model.*``
-# below are the offline-fitted Dual-Alpha + Sticky RL parameters (asymmetric
-# learning rates, choice stickiness, softmax inverse-temperature). The evaluator
-# supplies rewards on the normalized 0-1 scale used during fitting.
+# Model: Causal Sampling Bandit with Choice Trace (CSB+Trace)
+# A scale-free, resource-rational cognitive process model based on the Bayesian
+# Mutation Sampler (BMS, Kolvoort et al., 2023) combined with an action-level
+# choice trace.
+#
+# Fitted via hierarchical MCMC (NumPyro NUTS, 4 chains × 500 tune + 500 draws, 50 subjects).
+# All parameters are frozen for evaluation.
 
 runtime:
   random_seed: 2026
@@ -15,14 +16,25 @@ runtime:
   requires_external_api: false
 
 model:
-  name: dual_alpha_sticky_rl
-  type: cognitive_rl_model
-  rl_alpha_pos: 0.380
-  rl_alpha_neg: 0.763
-  sticky: 0.126
-  beta: 8.331
-  initial_q: 0.5
-  reward_scale: 1.0
+  name: causal_sampling_bandit_trace
+  type: cognitive_sampling_process_model
+  # Fitted population parameters
+  prior_beta: 1.134684
+  temperature: 0.415717
+  repetition_weight: 3.170215
+  choice_trace_rate: 0.412275
+  # Process hyperparameters (resource budget & scale-free likelihood)
+  n_samples: 10
+  n_particles: 32
+  obs_sigma: 0.1
+  forgetting: 0.98
+  n_levels: 5
+  seed: 2026
+  reward_normalization:
+    method: causal_running_standardization
+    scope: trajectory
+    variance: sample
+    zero_variance_value: 0.0
 
 evaluation:
   allow_online_state_updates: true
